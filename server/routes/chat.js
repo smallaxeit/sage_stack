@@ -5,12 +5,39 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { chatStream } from '../lib/claude.js';
 import { isReady, getChunkCount, getMeta, getConceptMap } from '../lib/vectorStore.js';
+import supabase from '../lib/supabase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROGRESS_FILE = path.join(__dirname, '../build-progress.json');
 
 const router = Router();
-const sessions = new Map();
+
+// Session helpers — Supabase-backed, falls back to in-memory if Supabase unavailable
+const memSessions = new Map();
+
+async function getSession(id) {
+  if (supabase) {
+    const { data } = await supabase.from('sessions').select('messages').eq('id', id).single();
+    return data?.messages || [];
+  }
+  return memSessions.get(id) || [];
+}
+
+async function saveSession(id, messages) {
+  if (supabase) {
+    await supabase.from('sessions').upsert({ id, messages }, { onConflict: 'id' });
+  } else {
+    memSessions.set(id, messages);
+  }
+}
+
+async function deleteSession(id) {
+  if (supabase) {
+    await supabase.from('sessions').delete().eq('id', id);
+  } else {
+    memSessions.delete(id);
+  }
+}
 
 router.get('/status', (req, res) => {
   const meta = getMeta();
@@ -60,9 +87,7 @@ router.post('/chat', async (req, res) => {
   }
 
   const id = sessionId || crypto.randomUUID();
-  if (!sessions.has(id)) sessions.set(id, []);
-
-  const history = sessions.get(id);
+  const history = await getSession(id);
   history.push({ role: 'user', content: message });
 
   // SSE headers
@@ -72,12 +97,47 @@ router.post('/chat', async (req, res) => {
   res.flushHeaders();
 
   try {
-    const { text: reply, sources, chips } = await chatStream(history, (chunk) => {
+    const { text: reply, sources, chips, analytics, outputTokens } = await chatStream(history, (chunk) => {
       res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
     }, mode);
 
     history.push({ role: 'assistant', content: reply });
     if (history.length > 40) history.splice(0, 2);
+    await saveSession(id, history);
+
+    // Fire-and-forget analytics logging
+    if (supabase) {
+      Promise.all([
+        // Log the chat interaction
+        supabase.from('chat_logs').insert({
+          session_id: id,
+          user_message: message,
+          assistant_response: reply,
+          mode,
+          subjects: analytics?.subjects || [],
+          themes: analytics?.themes || [],
+          sources_used: (sources || []).map(s => s.source),
+          chunks_used: analytics?.chunkRefs || [],
+          response_tokens: outputTokens || null,
+        }),
+
+        // Upsert chunk analytics — increment query_count for each retrieved chunk
+        ...(analytics?.chunkRefs || []).map(ref =>
+          supabase.rpc('increment_chunk_query', { p_source: ref.source, p_chunk_index: ref.chunk_index })
+            .then(({ error }) => {
+              // If RPC doesn't exist yet, fall back to upsert
+              if (error) {
+                return supabase.from('chunk_analytics').upsert({
+                  source: ref.source,
+                  chunk_index: ref.chunk_index,
+                  query_count: 1,
+                  last_queried_at: new Date().toISOString(),
+                }, { onConflict: 'source,chunk_index', ignoreDuplicates: false });
+              }
+            })
+        ),
+      ]).catch(err => console.warn('[analytics] Log error:', err.message));
+    }
 
     res.write(`data: ${JSON.stringify({ done: true, sessionId: id, sources, chips })}\n\n`);
     res.end();
@@ -88,8 +148,8 @@ router.post('/chat', async (req, res) => {
   }
 });
 
-router.delete('/chat/:sessionId', (req, res) => {
-  sessions.delete(req.params.sessionId);
+router.delete('/chat/:sessionId', async (req, res) => {
+  await deleteSession(req.params.sessionId);
   res.json({ ok: true });
 });
 

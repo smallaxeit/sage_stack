@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { searchByEmbedding } from './embeddings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const KB_FILE = path.join(__dirname, '../knowledge-base.json');
@@ -58,24 +59,26 @@ export async function loadKnowledgeBase() {
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
-export function search(query, topK = 6) {
+export async function search(query, topK = 10) {
+  // Try pgvector semantic search first
+  const embeddingResults = await searchByEmbedding(query, topK);
+  if (embeddingResults && embeddingResults.length > 0) {
+    console.log(`[search] pgvector — ${embeddingResults.length} results`);
+    return embeddingResults;
+  }
+
+  // Fall back to TF-IDF
+  console.log(`[search] TF-IDF fallback`);
   if (chunks.length === 0) return [];
 
   const qv = queryVector(query);
-
-  // Score by TF-IDF cosine similarity + concept match bonus
   const queryTokens = new Set(tokenize(query));
   const scored = chunks.map(chunk => {
     let score = cosineSimilarity(qv, chunk.vector || {});
-
-    // Boost chunks that explicitly mention relevant concepts
     const concepts = chunk.meta?.concepts || [];
     for (const concept of concepts) {
-      if (queryTokens.has(concept.toLowerCase())) {
-        score += 0.15;
-      }
+      if (queryTokens.has(concept.toLowerCase())) score += 0.15;
     }
-
     return { ...chunk, score };
   });
 
@@ -85,6 +88,7 @@ export function search(query, topK = 6) {
     .filter(r => r.score > 0)
     .map(r => ({
       source: r.source,
+      chunk_index: r.id,
       text: r.text,
       concepts: r.meta?.concepts || [],
       themes: r.meta?.themes || [],

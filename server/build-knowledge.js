@@ -19,6 +19,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Anthropic from '@anthropic-ai/sdk';
+import { createClient } from '@supabase/supabase-js';
 import { loadContentDir } from './lib/parser.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +49,11 @@ async function writeProgress(data) {
 }
 
 const client = new Anthropic();
+
+// Supabase client for syncing built knowledge
+const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
+  ? createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+  : null;
 
 // ─── Chunking ────────────────────────────────────────────────────────────────
 
@@ -206,8 +212,8 @@ async function analyzeChunk(chunk, idx, total) {
   process.stdout.write(`  [${idx}/${total}] ${chunk.source} ... `);
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1200,
+      model: 'claude-haiku-4-5',
+      max_tokens: 4096,
       messages: [{ role: 'user', content: CHUNK_ANALYSIS_PROMPT(chunk) }],
     });
 
@@ -215,11 +221,12 @@ async function analyzeChunk(chunk, idx, total) {
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```$/, '');
     const parsed = JSON.parse(raw);
+    parsed._model = 'haiku';
     console.log('✓');
     return parsed;
   } catch (err) {
     console.log(`failed (${err.message})`);
-    return { concepts: [], themes: [], scriptureRefs: [], philosophicalArguments: [], crossTextConnections: [], difficulty: 'intermediate', summary: '', originContext: chunk.source };
+    return { concepts: [], themes: [], scriptureRefs: [], philosophicalArguments: [], crossTextConnections: [], difficulty: 'intermediate', summary: '', originContext: chunk.source, _model: null };
   }
 }
 
@@ -397,6 +404,50 @@ async function main() {
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const sizeMB = ((await fs.stat(OUTPUT_FILE)).size / 1024 / 1024).toFixed(2);
+
+  // 7. Sync to Supabase
+  if (supabase) {
+    console.log('7. Syncing to Supabase...');
+    await writeProgress({ status: 'running', phase: 'syncing', current: allChunks.length, total: allChunks.length, pct: 99 });
+
+    // Upsert chunks in batches of 100
+    const rows = knowledgeBase.chunks.map((chunk) => ({
+      source: chunk.source,
+      chunk_index: chunk.id,
+      text: chunk.text,
+      summary: chunk.meta?.summary || null,
+      difficulty: chunk.meta?.difficulty || null,
+      origin_context: chunk.meta?.originContext || null,
+      concepts: chunk.meta?.concepts || [],
+      themes: chunk.meta?.themes || [],
+      scripture_refs: chunk.meta?.scriptureRefs || [],
+      philosophical_arguments: chunk.meta?.philosophicalArguments || [],
+      cross_text_connections: chunk.meta?.crossTextConnections || [],
+      tfidf_vector: chunk.vector || {},
+    }));
+
+    const BATCH = 100;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const { error } = await supabase.from('chunks').upsert(batch, { onConflict: 'source,chunk_index' });
+      if (error) console.warn(`  Supabase batch ${i}-${i + BATCH} error:`, error.message);
+      else process.stdout.write(`  Synced ${Math.min(i + BATCH, rows.length)}/${rows.length} chunks\r`);
+    }
+
+    // Save concept map
+    if (conceptMap.concepts?.length > 0) {
+      await supabase.from('concept_map').delete().neq('id', '00000000-0000-0000-0000-000000000000'); // clear old
+      await supabase.from('concept_map').insert({
+        core_themes: conceptMap.coreThemes || [],
+        concepts: conceptMap.concepts || [],
+        relationships: conceptMap.relationships || [],
+        learning_path: conceptMap.learningPath || [],
+        traditions: conceptMap.traditions || [],
+      });
+    }
+
+    console.log(`\n  ✓ Supabase synced — ${rows.length} chunks`);
+  }
 
   await writeProgress({ status: 'done', phase: 'complete', current: allChunks.length, total: allChunks.length, pct: 100, concepts: conceptMap.concepts?.length || 0 });
   console.log(`\n✓ Knowledge base saved to server/knowledge-base.json`);

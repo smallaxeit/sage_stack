@@ -18,6 +18,7 @@ import express from 'express';
 import cors from 'cors';
 import { loadKnowledgeBase } from './lib/vectorStore.js';
 import chatRouter from './routes/chat.js';
+import adminRouter from './routes/admin.js';
 
 const PORT = process.env.PORT || 3001;
 
@@ -25,6 +26,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use('/api', chatRouter);
+app.use('/api/admin', adminRouter);
 
 async function init() {
   console.log('Loading knowledge base...');
