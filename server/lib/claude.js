@@ -1,10 +1,53 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { search, getConceptMap } from './vectorStore.js';
+import { search, getConceptMap, getKnowledgeBase } from './vectorStore.js';
 
 let _client = null;
 function getClient() {
   if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return _client;
+}
+
+const SOURCE_NAMES = {
+  'The Holy Bible (KJV).pdf':                                  'The Holy Bible — King James Version (KJV)',
+  'EthiopianOrthodoxBible.pdf':                                'Ethiopian Orthodox Bible (includes deuterocanonical & Enochic texts)',
+  'Torah.pdf':                                                 'The Torah (Hebrew Bible)',
+  'quran-english-translation-clearquran-edition-allah.pdf':    'The Quran (ClearQuran English translation)',
+  'quran-rodwell-translation.txt':                             'The Quran (Rodwell English translation)',
+  'the-4-vedas.pdf':                                           'The Four Vedas (Rig, Sama, Yajur, Atharva)',
+  'en163-1.pdf':                                               'The Great Controversy — Ellen G. White (Seventh-day Adventist)',
+  'locke-two-treatises-of-government.txt':                     'Two Treatises of Government — John Locke',
+  'gospel-of-thomas.txt':                                      'The Gospel of Thomas (Nag Hammadi, Lambdin translation)',
+  'plato-republic.txt':                                        'The Republic — Plato',
+  'plato-phaedo.txt':                                          'Phaedo — Plato',
+  'plato-meno.txt':                                            'Meno — Plato',
+  'aristotle-nicomachean-ethics.txt':                          'Nicomachean Ethics — Aristotle',
+  'aristotle-politics.txt':                                    'Politics — Aristotle',
+  'marcus-aurelius-meditations.txt':                           'Meditations — Marcus Aurelius',
+  'epictetus-discourses.txt':                                  'Discourses — Epictetus',
+  'hobbes-leviathan.txt':                                      'Leviathan — Thomas Hobbes',
+  'rousseau-social-contract.txt':                              'The Social Contract — Jean-Jacques Rousseau',
+  'mill-utilitarianism.txt':                                   'Utilitarianism — John Stuart Mill',
+  'mill-on-liberty.txt':                                       'On Liberty — John Stuart Mill',
+  'aquinas-summa-theologica-selections.txt':                   'Summa Theologica (selections) — Thomas Aquinas',
+  'hume-enquiry-concerning-human-understanding.txt':           'Enquiry Concerning Human Understanding — David Hume',
+  'kant-groundwork-metaphysics-of-morals.txt':                 'Groundwork for the Metaphysics of Morals — Immanuel Kant',
+  'descartes-meditations-on-first-philosophy.txt':             'Meditations on First Philosophy — René Descartes',
+  'nietzsche-beyond-good-and-evil.txt':                        'Beyond Good and Evil — Friedrich Nietzsche',
+  'nietzsche-thus-spoke-zarathustra.txt':                      'Thus Spoke Zarathustra — Friedrich Nietzsche',
+  'bastiat-the-law.txt':                                       'The Law — Frédéric Bastiat',
+  'paine-rights-of-man.txt':                                   'Rights of Man — Thomas Paine',
+  'paine-common-sense.txt':                                    'Common Sense — Thomas Paine',
+  'jefferson-declaration-of-independence.txt':                 'The Declaration of Independence — Thomas Jefferson',
+  'jefferson-notes-on-the-state-of-virginia.txt':             'Notes on the State of Virginia — Thomas Jefferson',
+  'madison-hamilton-jay-federalist-papers.txt':                'The Federalist Papers — Madison, Hamilton & Jay',
+  'franklin-autobiography.txt':                                'The Autobiography of Benjamin Franklin',
+  'franklin-poor-richards-almanack.txt':                       'Poor Richard\'s Almanack — Benjamin Franklin',
+  'washington-farewell-address.txt':                           'Farewell Address — George Washington',
+  'patrick-henry-give-me-liberty.txt':                         'Give Me Liberty or Give Me Death — Patrick Henry',
+};
+
+export function friendlySourceName(filename) {
+  return SOURCE_NAMES[filename] || filename.replace(/\.(pdf|txt|md)$/i, '').replace(/[-_]/g, ' ');
 }
 
 function buildSystemPrompt(mode = 'deep') {
@@ -56,7 +99,14 @@ WELCOME ALL QUESTIONS:
 - This is a knowledge and learning tool. Hate, harassment, or calls to harm have no place here — redirect firmly but without drama if that line is crossed
 - Objective discourse on ethics, religion, politics, philosophy, and history is not only allowed — it's the point
 
-YOU DRAW ONLY FROM THE SCRIPTURE AND SACRED TEXTS PROVIDED IN CONTEXT BELOW. If the texts do not address the question, say so plainly.
+LOADED SOURCE TEXTS:
+${(() => {
+  const { chunks } = getKnowledgeBase();
+  const sources = [...new Set((chunks || []).map(c => c.source))];
+  return sources.map(s => `• ${friendlySourceName(s)}`).join('\n');
+})()}
+
+You have deep knowledge of all the sources listed above. The passages below are the most relevant excerpts for this specific question — use them as your primary reference, but do not tell the student a source is unavailable if it appears in the list above. If a specific passage isn't in the context window, draw on your broader knowledge of that text.
 
 ${mode === 'quick'
   ? 'RESPONSE MODE: Quick. Concise, accessible 1–2 paragraph answer. Plain language, no jargon unless essential. Still end with one question worth thinking about.'
@@ -78,7 +128,7 @@ async function buildContext(lastUserMessage) {
           r.concepts.length ? `Concepts: ${r.concepts.join(', ')}` : '',
           r.scriptureRefs.length ? `Scripture: ${r.scriptureRefs.join(', ')}` : '',
         ].filter(Boolean).join(' | ');
-        return `[${r.source}${meta ? ' — ' + meta : ''}]\n${r.text}`;
+        return `[${friendlySourceName(r.source)}${meta ? ' — ' + meta : ''}]\n${r.text}`;
       }).join('\n\n---\n\n')
     : '\n\nNo closely matching passages found. Stay within what you know from the full content.';
 
@@ -86,7 +136,7 @@ async function buildContext(lastUserMessage) {
   const sourceMap = new Map();
   for (const r of results) {
     if (!sourceMap.has(r.source)) {
-      sourceMap.set(r.source, { source: r.source, preview: r.text.slice(0, 160).replace(/\n/g, ' ') });
+      sourceMap.set(r.source, { source: friendlySourceName(r.source), preview: r.text.slice(0, 160).replace(/\n/g, ' ') });
     }
   }
   const sources = [...sourceMap.values()];

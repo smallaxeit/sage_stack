@@ -11,7 +11,6 @@ export async function parseFile(filePath) {
     case '.pdf':
       return parsePdf(raw);
     case '.txt':
-    case '.md':
       return raw.toString('utf-8');
     case '.json':
       return parseJson(raw);
@@ -45,12 +44,13 @@ export async function loadContentDir(dirPath) {
   for (const file of files) {
     const fullPath = path.join(dirPath, file);
     const stat = await fs.stat(fullPath);
-    if (stat.isFile()) {
-      console.log(`Parsing: ${file}`);
-      const text = await parseFile(fullPath);
-      if (text) {
-        docs.push({ source: file, text: text.trim() });
-      }
+    // Skip directories (e.g. library/) and markdown files
+    if (!stat.isFile()) continue;
+    if (path.extname(file).toLowerCase() === '.md') continue;
+    console.log(`Parsing: ${file}`);
+    const text = await parseFile(fullPath);
+    if (text) {
+      docs.push({ source: file, text: text.trim() });
     }
   }
 
