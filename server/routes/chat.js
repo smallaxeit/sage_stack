@@ -143,7 +143,7 @@ router.post('/chat', async (req, res) => {
     res.end();
   } catch (err) {
     console.error('Claude error:', err);
-    res.write(`data: ${JSON.stringify({ error: 'Failed to get response from Claude.' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: 'Sage is on retreat. The scrolls will be available again shortly.' })}\n\n`);
     res.end();
   }
 });

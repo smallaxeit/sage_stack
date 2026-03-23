@@ -9,10 +9,7 @@ export default function Message({ role, content, sources = [], chips = [], onChi
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
       {!isUser && (
-        <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm mr-3 mt-1 shrink-0 shadow"
-          style={{ background: 'var(--avatar-bg)', border: '1px solid var(--avatar-border)', color: 'var(--avatar-color)' }}>
-          ✝
-        </div>
+        <img src="/avatar.png" alt="Sage" className="w-8 h-8 rounded-full object-cover mr-3 mt-1 shrink-0 shadow" style={{ border: '1px solid var(--avatar-border)' }} />
       )}
 
       <div className="flex flex-col gap-2 max-w-[75%]">

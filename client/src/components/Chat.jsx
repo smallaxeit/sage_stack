@@ -89,9 +89,10 @@ export default function Chat({ ready }) {
         }
       }
     } catch (err) {
+      const fallback = "Sage is on retreat. The scrolls will be available again shortly.";
       setMessages(prev => {
         const msgs = [...prev];
-        msgs[msgs.length - 1] = { role: 'assistant', content: `Error: ${err.message}` };
+        msgs[msgs.length - 1] = { role: 'assistant', content: fallback };
         return msgs;
       });
     } finally {
