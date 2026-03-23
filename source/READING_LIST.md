@@ -71,6 +71,23 @@ Source PDFs for the knowledge base. Primary source: books.google.com
 
 ---
 
+## American Founding — Primary Sources
+- [ ] Thomas Jefferson — *The Declaration of Independence*
+- [ ] Thomas Jefferson — *Notes on the State of Virginia*
+- [ ] James Madison, Alexander Hamilton, John Jay — *The Federalist Papers*
+- [ ] James Madison — *Notes on the Constitutional Convention*
+- [ ] Benjamin Franklin — *The Autobiography of Benjamin Franklin*
+- [ ] Benjamin Franklin — *Poor Richard's Almanack* (selections)
+- [ ] George Washington — *Farewell Address*
+- [ ] George Washington — *Letters and Writings* (selections)
+- [ ] John Adams — *A Defence of the Constitutions of Government*
+- [ ] John Adams — *Thoughts on Government*
+- [ ] Thomas Paine — *Common Sense* *(also listed under Libertarianism)*
+- [ ] Patrick Henry — *Give Me Liberty or Give Me Death* (speech)
+- [ ] Alexander Hamilton — *Report on Manufactures*
+
+---
+
 ## Notes
 - Drop PDFs into `/source/` and run `npm run build:knowledge`
 - Only new files are analyzed — existing chunks load from cache
