@@ -1,6 +1,8 @@
 # SageStack — Philosophy & Theology Reading List
 
-Mark `[x]` when you've downloaded the PDF and dropped it in `/source/`. The build pipeline will auto-stamp `✓ analyzed` after processing.
+Mark `[x]` when you've downloaded the file and dropped it in `/source/`. The build pipeline will auto-stamp `✓ analyzed` after processing.
+
+Files staged in `/source/library/` — move to `/source/` when ready to build.
 
 ---
 
@@ -13,49 +15,51 @@ Mark `[x]` when you've downloaded the PDF and dropped it in `/source/`. The buil
 - [x] Buddhist texts ✓ analyzed
 
 ## Religious Texts — To Source
-- [ ] Book of Mormon — [churchofjesuschrist.org](https://www.churchofjesuschrist.org/study/scriptures/bofm?lang=eng) (free PDF)
-- [ ] Ellen G. White — *The Great Controversy* — [whiteestate.org](https://whiteestate.org) (free)
+- [ ] Book of Mormon — [churchofjesuschrist.org](https://www.churchofjesuschrist.org/study/scriptures/bofm?lang=eng) (free PDF) — manual download
+- [ ] Ellen G. White — *The Great Controversy* — [whiteestate.org](https://whiteestate.org) (free) — manual download
 
 ---
 
 ## Ancient / Classical Philosophy
-*Public domain — gutenberg.org or books.google.com*
-- [ ] Plato — *The Republic* — [gutenberg.org/ebooks/1497](https://www.gutenberg.org/ebooks/1497)
-- [ ] Plato — *Phaedo* — [gutenberg.org/ebooks/1658](https://www.gutenberg.org/ebooks/1658)
-- [ ] Plato — *Meno* — [gutenberg.org/ebooks/1643](https://www.gutenberg.org/ebooks/1643)
-- [ ] Aristotle — *Nicomachean Ethics* — [gutenberg.org/ebooks/8438](https://www.gutenberg.org/ebooks/8438)
-- [ ] Aristotle — *Politics* — [gutenberg.org/ebooks/6762](https://www.gutenberg.org/ebooks/6762)
-- [ ] Marcus Aurelius — *Meditations* — [gutenberg.org/ebooks/2680](https://www.gutenberg.org/ebooks/2680)
-- [ ] Epictetus — *Discourses* — [gutenberg.org/ebooks/10661](https://www.gutenberg.org/ebooks/10661)
+*Public domain — downloaded to `/source/library/`*
+- [x] Plato — *The Republic* — `plato-republic.txt`
+- [x] Plato — *Phaedo* — `plato-phaedo.txt`
+- [x] Plato — *Meno* — `plato-meno.txt`
+- [x] Aristotle — *Nicomachean Ethics* — `aristotle-nicomachean-ethics.txt`
+- [x] Aristotle — *Politics* — `aristotle-politics.txt`
+- [x] Marcus Aurelius — *Meditations* — `marcus-aurelius-meditations.txt`
+- [x] Epictetus — *Discourses* — `epictetus-discourses.txt`
 
 ---
 
 ## Social Contract
-*Public domain — gutenberg.org*
-- [ ] Thomas Hobbes — *Leviathan* — [gutenberg.org/ebooks/3207](https://www.gutenberg.org/ebooks/3207)
-- [ ] John Locke — *Two Treatises of Government* — [gutenberg.org/ebooks/7370](https://www.gutenberg.org/ebooks/7370)
-- [ ] Jean-Jacques Rousseau — *The Social Contract* — [gutenberg.org/ebooks/46333](https://www.gutenberg.org/ebooks/46333)
-- [ ] John Stuart Mill — *Utilitarianism* — [gutenberg.org/ebooks/11224](https://www.gutenberg.org/ebooks/11224)
-- [ ] John Stuart Mill — *On Liberty* — [gutenberg.org/ebooks/34901](https://www.gutenberg.org/ebooks/34901)
+*Public domain — downloaded to `/source/library/`*
+- [x] Thomas Hobbes — *Leviathan* — `hobbes-leviathan.txt`
+- [x] John Locke — *Two Treatises of Government* — `locke-two-treatises-of-government.txt`
+- [x] Jean-Jacques Rousseau — *The Social Contract* — `rousseau-social-contract.txt`
+- [x] John Stuart Mill — *Utilitarianism* — `mill-utilitarianism.txt`
+- [x] John Stuart Mill — *On Liberty* — `mill-on-liberty.txt`
 
 ---
 
 ## Ethics & Natural Law
-- [ ] Thomas Aquinas — *Summa Theologica* (selections) — [gutenberg.org/ebooks/17611](https://www.gutenberg.org/ebooks/17611)
-- [ ] David Hume — *Enquiry Concerning Human Understanding* — [gutenberg.org/ebooks/9662](https://www.gutenberg.org/ebooks/9662)
-- [ ] Immanuel Kant — *Groundwork for the Metaphysics of Morals* — [gutenberg.org/ebooks/5682](https://www.gutenberg.org/ebooks/5682)
+*Public domain — downloaded to `/source/library/`*
+- [x] Thomas Aquinas — *Summa Theologica* (selections) — `aquinas-summa-theologica-selections.txt`
+- [x] David Hume — *Enquiry Concerning Human Understanding* — `hume-enquiry-concerning-human-understanding.txt`
+- [x] Immanuel Kant — *Groundwork for the Metaphysics of Morals* — `kant-groundwork-metaphysics-of-morals.txt`
 
 ---
 
 ## Modern / Continental
-- [ ] René Descartes — *Meditations on First Philosophy* — [gutenberg.org/ebooks/59](https://www.gutenberg.org/ebooks/59)
-- [ ] Friedrich Nietzsche — *Beyond Good and Evil* — [gutenberg.org/ebooks/4363](https://www.gutenberg.org/ebooks/4363)
-- [ ] Friedrich Nietzsche — *Thus Spoke Zarathustra* — [gutenberg.org/ebooks/1998](https://www.gutenberg.org/ebooks/1998)
+*Public domain — downloaded to `/source/library/`*
+- [x] René Descartes — *Meditations on First Philosophy* — `descartes-meditations-on-first-philosophy.txt`
+- [x] Friedrich Nietzsche — *Beyond Good and Evil* — `nietzsche-beyond-good-and-evil.txt`
+- [x] Friedrich Nietzsche — *Thus Spoke Zarathustra* — `nietzsche-thus-spoke-zarathustra.txt`
 
 ---
 
 ## Objectivism — Ayn Rand
-*20th century — not public domain. Try archive.org*
+*20th century — not public domain. Manual download from archive.org*
 - [ ] Ayn Rand — *The Virtue of Selfishness* — [archive.org](https://archive.org/search?query=virtue+of+selfishness+rand)
 - [ ] Ayn Rand — *Capitalism: The Unknown Ideal* — [archive.org](https://archive.org/search?query=capitalism+unknown+ideal+rand)
 - [ ] Ayn Rand — *Philosophy: Who Needs It* — [archive.org](https://archive.org/search?query=philosophy+who+needs+it+rand)
@@ -65,38 +69,39 @@ Mark `[x]` when you've downloaded the PDF and dropped it in `/source/`. The buil
 ---
 
 ## Libertarianism & Classical Liberalism
-- [ ] Frédéric Bastiat — *The Law* — [mises.org/library/law](https://mises.org/library/law) (free PDF)
-- [ ] Friedrich Hayek — *The Road to Serfdom* — [mises.org](https://mises.org/library/road-serfdom) (free PDF)
-- [ ] Friedrich Hayek — *The Constitution of Liberty* — [archive.org](https://archive.org/search?query=constitution+of+liberty+hayek)
-- [ ] Milton Friedman — *Capitalism and Freedom* — [archive.org](https://archive.org/search?query=capitalism+and+freedom+friedman)
-- [ ] Murray Rothbard — *For a New Liberty* — [mises.org/library/new-liberty-libertarian-manifesto](https://mises.org/library/new-liberty-libertarian-manifesto) (free PDF)
-- [ ] Murray Rothbard — *The Ethics of Liberty* — [mises.org/library/ethics-liberty](https://mises.org/library/ethics-liberty) (free PDF)
-- [ ] Robert Nozick — *Anarchy, State, and Utopia* — [archive.org](https://archive.org/search?query=anarchy+state+utopia+nozick)
-- [ ] Ludwig von Mises — *Liberalism* — [mises.org/library/liberalism-classical-tradition](https://mises.org/library/liberalism-classical-tradition) (free PDF)
-- [ ] Thomas Paine — *Rights of Man* — [gutenberg.org/ebooks/31271](https://www.gutenberg.org/ebooks/31271)
-- [ ] Thomas Paine — *Common Sense* — [gutenberg.org/ebooks/147](https://www.gutenberg.org/ebooks/147)
+- [x] Frédéric Bastiat — *The Law* — `bastiat-the-law.txt` (public domain, Gutenberg)
+- [ ] Friedrich Hayek — *The Road to Serfdom* — [mises.org/library/road-serfdom](https://mises.org/library/road-serfdom) — manual download (free PDF)
+- [ ] Friedrich Hayek — *The Constitution of Liberty* — [archive.org](https://archive.org/search?query=constitution+of+liberty+hayek) — manual download
+- [ ] Milton Friedman — *Capitalism and Freedom* — [archive.org](https://archive.org/search?query=capitalism+and+freedom+friedman) — manual download
+- [ ] Murray Rothbard — *For a New Liberty* — [mises.org/library/new-liberty-libertarian-manifesto](https://mises.org/library/new-liberty-libertarian-manifesto) — manual download (free PDF)
+- [ ] Murray Rothbard — *The Ethics of Liberty* — [mises.org/library/ethics-liberty](https://mises.org/library/ethics-liberty) — manual download (free PDF)
+- [ ] Robert Nozick — *Anarchy, State, and Utopia* — [archive.org](https://archive.org/search?query=anarchy+state+utopia+nozick) — manual download
+- [ ] Ludwig von Mises — *Liberalism* — [mises.org/library/liberalism-classical-tradition](https://mises.org/library/liberalism-classical-tradition) — manual download (free PDF)
+- [x] Thomas Paine — *Rights of Man* — `paine-rights-of-man.txt`
+- [x] Thomas Paine — *Common Sense* — `paine-common-sense.txt`
 
 ---
 
 ## American Founding — Primary Sources
-*All public domain — founders.archives.gov or gutenberg.org*
-- [ ] Thomas Jefferson — *The Declaration of Independence* — [gutenberg.org/ebooks/1](https://www.gutenberg.org/ebooks/1)
-- [ ] Thomas Jefferson — *Notes on the State of Virginia* — [gutenberg.org/ebooks/16784](https://www.gutenberg.org/ebooks/16784)
-- [ ] Madison, Hamilton, Jay — *The Federalist Papers* — [gutenberg.org/ebooks/1404](https://www.gutenberg.org/ebooks/1404)
-- [ ] James Madison — *Notes on the Constitutional Convention* — [founders.archives.gov](https://founders.archives.gov)
-- [ ] Benjamin Franklin — *The Autobiography of Benjamin Franklin* — [gutenberg.org/ebooks/148](https://www.gutenberg.org/ebooks/148)
-- [ ] Benjamin Franklin — *Poor Richard's Almanack* (selections) — [gutenberg.org/ebooks/3100](https://www.gutenberg.org/ebooks/3100)
-- [ ] George Washington — *Farewell Address* — [gutenberg.org/ebooks/675](https://www.gutenberg.org/ebooks/675)
-- [ ] George Washington — *Letters and Writings* — [founders.archives.gov](https://founders.archives.gov)
-- [ ] John Adams — *A Defence of the Constitutions of Government* — [founders.archives.gov](https://founders.archives.gov)
-- [ ] John Adams — *Thoughts on Government* — [founders.archives.gov](https://founders.archives.gov)
-- [ ] Patrick Henry — *Give Me Liberty or Give Me Death* (speech) — [gutenberg.org](https://www.gutenberg.org)
-- [ ] Alexander Hamilton — *Report on Manufactures* — [founders.archives.gov](https://founders.archives.gov)
+*Public domain — downloaded to `/source/library/`*
+- [x] Thomas Jefferson — *The Declaration of Independence* — `jefferson-declaration-of-independence.txt`
+- [x] Thomas Jefferson — *Notes on the State of Virginia* — `jefferson-notes-on-the-state-of-virginia.txt`
+- [x] Madison, Hamilton, Jay — *The Federalist Papers* — `madison-hamilton-jay-federalist-papers.txt`
+- [x] James Madison — *Notes on the Constitutional Convention* — `madison-notes-constitutional-convention-vol1.txt` + `vol2.txt`
+- [x] Benjamin Franklin — *The Autobiography of Benjamin Franklin* — `franklin-autobiography.txt`
+- [x] Benjamin Franklin — *Poor Richard's Almanack* (selections) — `franklin-poor-richards-almanack.txt`
+- [x] George Washington — *Farewell Address* — `washington-farewell-address.txt`
+- [ ] George Washington — *Letters and Writings* — [founders.archives.gov](https://founders.archives.gov) — manual download
+- [ ] John Adams — *A Defence of the Constitutions of Government* — [founders.archives.gov](https://founders.archives.gov) — manual download
+- [ ] John Adams — *Thoughts on Government* — [founders.archives.gov](https://founders.archives.gov) — manual download
+- [x] Patrick Henry — *Give Me Liberty or Give Me Death* (speech) — `patrick-henry-give-me-liberty.txt`
+- [ ] Alexander Hamilton — *Report on Manufactures* — [founders.archives.gov](https://founders.archives.gov) — manual download
 
 ---
 
 ## Notes
-- Mark `[x]` when PDF is in `/source/` — build pipeline stamps `✓ analyzed` automatically
+- Mark `[x]` when file is in `/source/` — build pipeline stamps `✓ analyzed` automatically
+- **Staged library:** `/source/library/` — 30 texts downloaded and ready. Move to `/source/` to include in build.
 - **Free sources:** gutenberg.org · mises.org · whiteestate.org · churchofjesuschrist.org · founders.archives.gov
-- **Copyrighted (20th century):** archive.org for borrowable scans, or purchase
-- Duplicate entries (Paine's *Common Sense*) — one PDF covers both sections
+- **Copyrighted (20th century):** archive.org for borrowable scans, or purchase. Hayek/Rothbard/Friedman/Mises free PDFs require manual download from mises.org (CDN blocks programmatic access).
+- Paine's *Common Sense* covers both the Libertarianism and Founding sections — one file

@@ -84,19 +84,21 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
           {/* STATUS TAB */}
           {tab === 'status' && (
             <>
-              <Section title="Knowledge Base">
+              <Section title="System">
                 <div className="admin-stats-grid">
-                  <Stat label="Concepts" value={stats?.concepts?.toLocaleString()} />
-                  <Stat label="Sources" value={stats?.sources?.length} />
+                  <Stat label="Works loaded" value={stats?.sources?.length ?? '—'} />
+                  <Stat label="Concepts mapped" value={stats?.concepts?.toLocaleString() ?? '—'} />
+                  <Stat label="Traditions" value={stats?.traditions ?? '—'} />
+                  <Stat label="Sonnet queue" value={stats?.sonnetQueued ?? '—'} />
                 </div>
                 {stats?.builtAt && (
                   <p className="admin-meta">Last built: {new Date(stats.builtAt).toLocaleString()}</p>
                 )}
               </Section>
 
-              <Section title="Embeddings (Voyage AI)">
+              <Section title="Semantic Coverage">
                 <div className="admin-progress-row">
-                  <span>{stats?.embeddings?.toLocaleString() || 0} / {stats?.chunks?.toLocaleString() || 0}</span>
+                  <span>Embeddings</span>
                   <span>{embPct}%</span>
                 </div>
                 <div className="admin-bar-track">
@@ -104,16 +106,10 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
                 </div>
               </Section>
 
-              <Section title="Upgrade Queue">
-                <div className="admin-stats-grid">
-                  <Stat label="Sonnet Queued" value={stats?.sonnetQueued} sub="chunks flagged for upgrade" />
-                </div>
-              </Section>
-
               {isBuilding && (
                 <Section title="Build Running">
                   <div className="admin-progress-row">
-                    <span>{buildProgress.phase === 'concept-map' ? 'Building concept map…' : `${buildProgress.current?.toLocaleString()} / ${buildProgress.total?.toLocaleString()} chunks`}</span>
+                    <span>{buildProgress.phase === 'concept-map' ? 'Building concept map…' : `Analyzing ${buildProgress.current?.toLocaleString()} / ${buildProgress.total?.toLocaleString()}`}</span>
                     <span>{buildProgress.pct}%</span>
                   </div>
                   <div className="admin-bar-track">
@@ -133,26 +129,25 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
 
           {/* SOURCES TAB */}
           {tab === 'sources' && (
-            <Section title="Source Files">
+            <Section title="Books">
               {sources.length === 0
                 ? <p className="admin-empty">No sources loaded</p>
-                : sources.map(s => (
-                  <div key={s.source} className="admin-source-row">
-                    <div className="admin-source-name">{s.source.replace('.pdf', '')}</div>
-                    <div className="admin-source-meta">
-                      <span>{s.total.toLocaleString()} chunks</span>
-                      <span className={s.analyzed === s.total ? 'text-emerald-400' : 'text-amber-400'}>
-                        {s.analyzed.toLocaleString()} analyzed
-                      </span>
-                      <span className={s.withEmbedding === s.total ? 'text-emerald-400' : 'text-slate-400'}>
-                        {s.withEmbedding.toLocaleString()} embedded
-                      </span>
+                : sources.map(s => {
+                  const pct = Math.round(s.analyzed / s.total * 100);
+                  return (
+                    <div key={s.source} className="admin-source-row">
+                      <div className="admin-source-name">{s.source.replace(/\.(pdf|txt)$/i, '')}</div>
+                      <div className="admin-source-meta">
+                        <span className={pct === 100 ? 'text-emerald-400' : 'text-amber-400'}>
+                          {pct === 100 ? '✓ fully analyzed' : `${pct}% analyzed`}
+                        </span>
+                      </div>
+                      <div className="admin-source-bar-track">
+                        <div className="admin-source-bar-analyzed" style={{ width: `${pct}%` }} />
+                      </div>
                     </div>
-                    <div className="admin-source-bar-track">
-                      <div className="admin-source-bar-analyzed" style={{ width: `${Math.round(s.analyzed / s.total * 100)}%` }} />
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               }
             </Section>
           )}

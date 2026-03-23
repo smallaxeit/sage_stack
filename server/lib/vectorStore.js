@@ -102,4 +102,5 @@ export async function search(query, topK = 10) {
 export function getConceptMap() { return conceptMap; }
 export function getMeta() { return meta; }
 export function getChunkCount() { return chunks.length; }
+export function getKnowledgeBase() { return { chunks, conceptMap, meta }; }
 export function isReady() { return chunks.length > 0; }

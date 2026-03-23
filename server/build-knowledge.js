@@ -21,6 +21,7 @@ import { fileURLToPath } from 'url';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { loadContentDir } from './lib/parser.js';
+import { buildEmbeddings } from './lib/embeddings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -35,7 +36,7 @@ try {
     if (eq === -1) continue;
     const key = trimmed.slice(0, eq).trim();
     const val = trimmed.slice(eq + 1).trim();
-    if (key && !process.env[key]) process.env[key] = val;
+    if (key) process.env[key] = val; // always override — child process inherits parent env
   }
 } catch { /* .env not found, rely on existing process.env */ }
 
@@ -498,6 +499,20 @@ async function main() {
 
   // 8. Update reading list
   await updateReadingList(allChunks);
+
+  // 9. Build Voyage embeddings for all un-embedded chunks
+  if (supabase && process.env.VOYAGE_API_KEY) {
+    console.log('9. Building embeddings (Voyage AI)...');
+    await writeProgress({ status: 'running', phase: 'embedding', current: 0, total: allChunks.length, pct: 99 });
+    let embeddedCount = 0;
+    await buildEmbeddings((progress) => {
+      embeddedCount = progress.done || embeddedCount;
+      process.stdout.write(`  Embedded ${progress.done}/${progress.total} chunks\r`);
+    });
+    console.log(`\n  ✓ Embeddings complete`);
+  } else {
+    console.log('9. Skipping embeddings — VOYAGE_API_KEY or Supabase not configured');
+  }
 
   await writeProgress({ status: 'done', phase: 'complete', current: allChunks.length, total: allChunks.length, pct: 100, concepts: conceptMap.concepts?.length || 0 });
   console.log(`\n✓ Knowledge base saved to server/knowledge-base.json`);

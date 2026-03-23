@@ -21,7 +21,7 @@ try {
     if (eq === -1 || line.trim().startsWith('#')) continue;
     const key = line.slice(0, eq).trim();
     const val = line.slice(eq + 1).trim();
-    if (key && !process.env[key]) process.env[key] = val;
+    if (key) process.env[key] = val; // always override — child process inherits parent env
   }
 } catch {}
 
@@ -92,8 +92,8 @@ async function main() {
   // Build concept frequency map
   const freq = {};
   for (const m of meta) for (const c of (m.concepts || [])) freq[c] = (freq[c] || 0) + 1;
-  const topConcepts = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 150).map(([c]) => c);
-  const allArgs = meta.flatMap(m => m.philosophicalArguments || []).slice(0, 50);
+  const topConcepts = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 80).map(([c]) => c);
+  const allArgs = meta.flatMap(m => m.philosophicalArguments || []).slice(0, 25);
 
   console.log(`  Top concepts: ${topConcepts.length}, arguments sample: ${allArgs.length}`);
   console.log('\nCalling Claude Sonnet for concept map...');
@@ -107,13 +107,22 @@ async function main() {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       console.log(`  Attempt ${attempt}/3...`);
-      const response = await client.messages.create({
+      // Use streaming to avoid connection timeouts on long responses
+      let fullText = '';
+      const stream = await client.messages.stream({
         model: 'claude-sonnet-4-6',
         max_tokens: 16000,
         messages: [{ role: 'user', content: CONCEPT_MAP_PROMPT({ sources, concepts: topConcepts, arguments: allArgs }) }],
       });
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta?.text) {
+          fullText += chunk.delta.text;
+          process.stdout.write('.');
+        }
+      }
+      console.log('');
 
-      const raw = response.content[0].text.trim()
+      const raw = fullText.trim()
         .replace(/^```(?:json)?\s*/i, '')
         .replace(/\s*```$/, '');
       conceptMap = JSON.parse(raw);

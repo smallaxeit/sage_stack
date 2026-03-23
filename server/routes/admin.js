@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { buildEmbeddings } from '../lib/embeddings.js';
-import { getChunkCount, getMeta, getConceptMap } from '../lib/vectorStore.js';
+import { getChunkCount, getMeta, getConceptMap, getKnowledgeBase } from '../lib/vectorStore.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -57,31 +57,14 @@ router.get('/stats', async (req, res) => {
 });
 
 // ─── Source breakdown ─────────────────────────────────────────────────────────
-router.get('/sources', async (req, res) => {
-  if (!supabase) return res.json([]);
-
-  const { data } = await supabase
-    .from('chunks')
-    .select('source, chunk_index, difficulty, summary')
-    .order('source');
-
+router.get('/sources', (req, res) => {
+  const { chunks } = getKnowledgeBase();
   const map = {};
-  for (const row of (data || [])) {
-    if (!map[row.source]) map[row.source] = { source: row.source, total: 0, analyzed: 0, withEmbedding: 0 };
-    map[row.source].total++;
-    if (row.summary) map[row.source].analyzed++;
+  for (const chunk of chunks) {
+    if (!map[chunk.source]) map[chunk.source] = { source: chunk.source, total: 0, analyzed: 0 };
+    map[chunk.source].total++;
+    if (chunk.meta?.summary) map[chunk.source].analyzed++;
   }
-
-  // Get embedding counts per source
-  const { data: embData } = await supabase
-    .from('chunks')
-    .select('source')
-    .not('embedding', 'is', null);
-
-  for (const row of (embData || [])) {
-    if (map[row.source]) map[row.source].withEmbedding++;
-  }
-
   res.json(Object.values(map).sort((a, b) => b.total - a.total));
 });
 

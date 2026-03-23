@@ -12,19 +12,30 @@ import { supabase } from './supabase.js';
 
 const VOYAGE_API = 'https://api.voyageai.com/v1/embeddings';
 
-async function voyageEmbed(texts, inputType = 'document') {
+async function voyageEmbed(texts, inputType = 'document', retries = 5) {
   if (!process.env.VOYAGE_API_KEY) throw new Error('VOYAGE_API_KEY not set');
-  const res = await fetch(VOYAGE_API, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.VOYAGE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ model: MODEL, input: texts, input_type: inputType }),
-  });
-  if (!res.ok) throw new Error(`Voyage API error: ${res.status} ${await res.text()}`);
-  const json = await res.json();
-  return json.data.map(d => d.embedding);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(VOYAGE_API, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.VOYAGE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: MODEL, input: texts, input_type: inputType }),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return json.data.map(d => d.embedding);
+    }
+    if (res.status === 429 && attempt < retries) {
+      // Rate limited — back off exponentially (20s, 40s, 80s...)
+      const wait = 20000 * Math.pow(2, attempt);
+      console.log(`\n  Rate limited, waiting ${wait / 1000}s before retry ${attempt + 1}/${retries}...`);
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+    throw new Error(`Voyage API error: ${res.status} ${await res.text()}`);
+  }
 }
 
 const MODEL = 'voyage-3';
@@ -82,8 +93,8 @@ export async function buildEmbeddings(onProgress) {
     }
 
     done += batch.length;
-    if (onProgress) onProgress(done, chunks.length);
-    console.log(`  Embedded ${done}/${chunks.length}`);
+    if (onProgress) onProgress({ done, total: chunks.length });
+    process.stdout.write(`  Embedded ${done}/${chunks.length}\r`);
   }
 
   return done;

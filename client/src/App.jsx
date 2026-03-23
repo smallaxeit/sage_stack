@@ -70,9 +70,7 @@ export default function App() {
       <header className="px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--header-border)', background: 'var(--header-bg)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl select-none shadow-lg" style={{ background: 'var(--header-icon-bg)', border: '1px solid var(--header-icon-border)', color: 'var(--header-icon-color)' }}>
-              ✝
-            </div>
+            <img src="/avatar.png" alt="Sage" className="w-10 h-10 rounded-full object-cover shadow-lg" style={{ border: '1px solid var(--header-icon-border)' }} />
             <div>
               <h1 className="text-base font-semibold leading-none" style={{ color: 'var(--header-text)' }}>SageStack</h1>
               <p className="text-xs mt-0.5" style={{ color: 'var(--header-subtext)' }}>from scripture to social contract</p>
@@ -81,11 +79,6 @@ export default function App() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full ${ready ? 'bg-emerald-500' : 'bg-slate-500'}`} />
-              <span className="text-xs" style={{ color: 'var(--header-meta)' }}>
-                {ready
-                  ? `${status.chunks.toLocaleString()} chunks · ${status.concepts} concepts`
-                  : 'Knowledge base not built'}
-              </span>
             </div>
             {/* Theme toggle */}
             <button
