@@ -127,20 +127,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Core themes strip */}
-        {ready && status.coreThemes?.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {status.coreThemes.map(t => (
-              <span
-                key={t}
-                className="text-xs px-2 py-0.5 rounded-full"
-                style={{ background: 'var(--chip-bg)', color: 'var(--chip-text)', border: '1px solid var(--chip-border)' }}
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
       </header>
 
       {/* Chat */}

@@ -61,9 +61,25 @@ const supabase = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY
 const CHUNK_TARGET = 400;   // target words per chunk
 const CHUNK_MIN    = 100;   // don't save tiny orphan chunks
 
+function normalizeText(text) {
+  // Gutenberg .txt files use hard line-wrapping at ~70 chars with single newlines.
+  // Join those wrapped lines into full paragraphs, preserving real paragraph breaks.
+  return text
+    .replace(/\r\n/g, '\n')
+    // Preserve double newlines as paragraph markers
+    .replace(/\n{2,}/g, '\x00')
+    // Join hard-wrapped lines (single newline, next line is lowercase or mid-sentence)
+    .replace(/\n([a-z\(\"\'])/g, ' $1')
+    .replace(/\n/g, ' ')
+    // Restore paragraph breaks
+    .replace(/\x00/g, '\n\n');
+}
+
 function chunkByParagraph(text, source) {
-  // Split on double newlines (paragraph breaks) first
-  const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  // Only normalize hard-wrapped text for .txt files (e.g. Gutenberg)
+  // PDFs are already clean from pdf-parse — normalizing them would break cache keys
+  const normalized = source.endsWith('.txt') ? normalizeText(text) : text;
+  const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const chunks = [];
   let current = [];
   let wordCount = 0;
@@ -283,7 +299,7 @@ function chunkHash(chunk) {
 
 // ─── Reading list updater ─────────────────────────────────────────────────────
 
-const READING_LIST = path.join(__dirname, '../source/READING_LIST.md');
+const READING_LIST = path.join(__dirname, '../READING_LIST.md');
 
 async function updateReadingList(chunks) {
   try {

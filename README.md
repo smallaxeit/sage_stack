@@ -14,7 +14,7 @@ SageStack is built on the **Socratic method** — the oldest and most effective 
 
 Rather than lecturing, SageStack:
 - **Answers directly** — no gatekeeping, no hedging. You get a real, substantive answer grounded in the source texts.
-- **Then asks back** — every response ends with genuine Socratic questions designed to open the next layer of thinking and guide you toward your own conclusions.
+- **Then asks back** — every response ends with genuine questions designed to open the next layer of thinking and guide you toward your own conclusions.
 - **Meets you where you are** — whether you're a theology student, a curious skeptic, someone raised in the faith, or someone who just wants to understand what all this is about. Ask in whatever voice comes naturally.
 
 The goal isn't to tell you what to believe. It's to help you think more clearly about what you already believe — and what you don't.
@@ -25,35 +25,44 @@ The goal isn't to tell you what to believe. It's to help you think more clearly 
 
 SageStack draws from the world's major religious and philosophical traditions. The knowledge base is designed to grow.
 
-### Religious texts (loaded)
+### Religious texts
 | Text | Tradition |
 |------|-----------|
-| The Holy Bible (KJV) | Christianity |
-| Ethiopian Orthodox Bible | Orthodox Christianity |
-| Torah | Judaism |
+| The Holy Bible — King James Version | Christianity |
+| Ethiopian Orthodox Bible | Orthodox Christianity (includes deuterocanonical & Enochic texts) |
 | Quran | Islam |
-| The 4 Vedas | Hinduism |
+| Book of Mormon | Latter-day Saints |
+| Gospel of Thomas | Gnostic / Early Christian |
+| The Great Controversy — Ellen G. White | Seventh-day Adventist |
 | Buddhist texts | Buddhism |
 
-### Philosophy (expanding)
+### Philosophy & Political Thought
 | Text | School |
 |------|--------|
 | Plato — *Republic*, *Phaedo*, *Meno* | Ancient / Classical |
 | Aristotle — *Nicomachean Ethics*, *Politics* | Ancient / Classical |
 | Marcus Aurelius — *Meditations* | Stoicism |
 | Epictetus — *Discourses* | Stoicism |
+| Thomas Aquinas — *Summa Theologica* | Natural Law |
 | Thomas Hobbes — *Leviathan* | Social Contract |
 | John Locke — *Two Treatises of Government* | Social Contract |
 | Jean-Jacques Rousseau — *The Social Contract* | Social Contract |
-| John Stuart Mill — *Utilitarianism*, *On Liberty* | Liberalism |
+| David Hume — *Enquiry Concerning Human Understanding* | Empiricism |
 | Immanuel Kant — *Groundwork for the Metaphysics of Morals* | Deontology |
-| Thomas Aquinas — *Summa Theologica* | Natural Law |
-| René Descartes — *Meditations on First Philosophy* | Modern |
-| Friedrich Nietzsche — *Beyond Good and Evil* | Continental |
+| René Descartes — *Meditations on First Philosophy* | Rationalism |
+| John Stuart Mill — *Utilitarianism*, *On Liberty* | Liberalism |
+| Friedrich Nietzsche — *Beyond Good and Evil*, *Thus Spoke Zarathustra* | Continental |
+| Frédéric Bastiat — *The Law* | Classical Liberalism |
+| Thomas Paine — *Common Sense*, *Rights of Man* | American Founding |
+| Madison, Hamilton & Jay — *The Federalist Papers* | American Founding |
+| Thomas Jefferson — *Declaration of Independence*, *Notes on Virginia* | American Founding |
+| Benjamin Franklin — *Autobiography*, *Poor Richard's Almanack* | American Founding |
+| George Washington — *Farewell Address* | American Founding |
+| Patrick Henry — *Give Me Liberty or Give Me Death* | American Founding |
 
-Topics span theology, comparative religion, ethics, philosophy of religion, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from dharma to divine command theory.
+Topics span theology, comparative religion, ethics, political philosophy, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from the Nag Hammadi scrolls to natural law.
 
-See `source/READING_LIST.md` for the full list with load status.
+See `READING_LIST.md` for the full source list with load status and staging queue.
 
 ---
 
@@ -67,13 +76,13 @@ Source texts are pre-processed before the app runs. Each document is:
 4. Embedded with Voyage AI (voyage-3) for semantic vector search
 5. Synced to Supabase for persistence
 
-This happens once per source. Results are cached — adding new texts only processes new material. The reading list (`source/READING_LIST.md`) is auto-updated after each build.
+This happens once per source. Results are cached — adding new texts only processes new material.
 
 ### Chat
-When you ask a question, the most semantically relevant passages from across all source texts are retrieved via pgvector and used to ground the response. The AI teaches strictly from the loaded texts — if it's not in the source material, it says so plainly.
+When you ask a question, the most semantically relevant passages from across all source texts are retrieved via pgvector and used to ground the response. The AI teaches from the loaded texts and knows which sources are available — it won't claim a source is missing just because it didn't surface in a given search.
 
 ### Analytics (background)
-Every chat interaction is logged to Supabase — subjects, themes, which chunks were retrieved. Frequently-queried chunks are automatically flagged for deeper Sonnet re-analysis. All of this happens silently in the background and is accessible directly via the Supabase dashboard.
+Every chat interaction is logged to Supabase — subjects, themes, which chunks were retrieved. Frequently-queried chunks are automatically flagged for deeper re-analysis. All of this happens silently in the background and is accessible directly via the Supabase dashboard.
 
 ---
 
@@ -83,9 +92,10 @@ Every chat interaction is logged to Supabase — subjects, themes, which chunks 
 - **Quick / Deep mode** — concise accessible answers or full scholarly treatment
 - **Explore chips** — clickable concept suggestions after each response
 - **Source citations** — see exactly which texts were used to generate each answer
+- **Friendly source names** — human-readable titles throughout, not filenames
 - **Dark / Light theme** — persists across sessions
 - **Admin panel** — manage builds, view source status, trigger embeddings and concept map rebuilds
-- **Expandable knowledge base** — drop in new PDFs, rebuild, reading list updates automatically
+- **Expandable knowledge base** — drop in new source files, rebuild, done
 
 ---
 
@@ -151,20 +161,21 @@ Open [http://localhost:5199](http://localhost:5199)
 ├── server/                        # Node/Express backend
 │   ├── build-knowledge.js         # Pre-build pipeline
 │   ├── rebuild-concepts.js        # Standalone concept map rebuild
+│   ├── sync-and-embed.js          # Standalone Supabase sync + Voyage embeddings
 │   ├── supabase-schema.sql        # Core DB schema
 │   ├── supabase-analytics.sql     # Analytics tables, functions, views
 │   ├── supabase-vector-search.sql # pgvector match_chunks function
 │   ├── lib/
 │   │   ├── claude.js              # AI integration + RAG + system prompt
 │   │   ├── embeddings.js          # Voyage AI embeddings + pgvector search
-│   │   ├── supabase.js            # Supabase lazy clients
+│   │   ├── supabase.js            # Supabase lazy client
 │   │   ├── vectorStore.js         # Search (pgvector → TF-IDF fallback)
 │   │   └── parser.js              # PDF and text parsing
 │   └── routes/
 │       ├── chat.js                # Chat API + session management
 │       └── admin.js               # Admin API routes
-└── source/                        # Drop source PDFs here
-    └── READING_LIST.md            # Tracked source list, auto-updated on build
+└── source/                        # Drop source files here (PDF or TXT)
+    └── library/                   # Staging area — move files to source/ when ready to build
 ```
 
 ---
@@ -172,7 +183,8 @@ Open [http://localhost:5199](http://localhost:5199)
 ## Notes
 
 - `.env` is gitignored — never commit API keys
-- `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up, they represent your paid analysis work
-- Source PDFs are gitignored — store separately (books.google.com for public domain texts)
+- `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up, they represent your analysis work
+- Source files are gitignored — store separately
 - Sessions persist in Supabase — survive server restarts
 - Analytics log silently to Supabase — query via dashboard when needed
+- When adding a new source file, add a friendly name entry to `SOURCE_NAMES` in `server/lib/claude.js`
