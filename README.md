@@ -71,6 +71,7 @@ When you ask a question, the most relevant passages from across all source texts
 | Frontend | React + Vite + Tailwind CSS |
 | Backend | Node.js + Express |
 | AI | Claude Sonnet |
+| Database | Supabase (PostgreSQL + pgvector) |
 | Knowledge | TF-IDF vector search + RAG |
 | Build pipeline | Pre-build PDF analysis |
 
@@ -84,11 +85,18 @@ npm install
 cd server && npm install
 cd ../client && npm install
 
-# Add your Anthropic API key
+# Add your API keys
 cp server/.env.example server/.env
-# Edit server/.env → ANTHROPIC_API_KEY=sk-ant-...
+# Edit server/.env:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   SUPABASE_URL=https://your-project.supabase.co
+#   SUPABASE_ANON_KEY=...
+#   SUPABASE_SERVICE_KEY=...
 
-# Build the knowledge base (one-time)
+# Set up the database (one-time)
+# Run server/supabase-schema.sql in your Supabase SQL Editor
+
+# Build the knowledge base (one-time, ~$50, several hours)
 npm run build:knowledge
 
 # Run the app
@@ -111,8 +119,10 @@ Open [http://localhost:5199](http://localhost:5199)
 │           └── Message.jsx      # Message bubbles, chips, citations
 ├── server/                      # Node/Express backend
 │   ├── build-knowledge.js       # Pre-build pipeline
+│   ├── supabase-schema.sql      # Database schema — run once in Supabase
 │   ├── lib/
 │   │   ├── claude.js            # AI integration + RAG + system prompt
+│   │   ├── supabase.js          # Supabase client (server + public)
 │   │   ├── vectorStore.js       # TF-IDF vector search
 │   │   └── parser.js            # PDF and text parsing
 │   └── routes/
@@ -127,4 +137,4 @@ Open [http://localhost:5199](http://localhost:5199)
 - `.env` is gitignored — never commit your API key
 - `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up separately, they represent your built knowledge
 - Source PDFs are gitignored — store separately
-- Session history is in-memory — clears on server restart
+- Session history persists in Supabase — survives server restarts
