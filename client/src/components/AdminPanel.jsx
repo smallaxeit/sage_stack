@@ -31,7 +31,6 @@ function Section({ title, children }) {
 export default function AdminPanel({ open, onClose, buildProgress }) {
   const [stats, setStats]       = useState(null);
   const [sources, setSources]   = useState([]);
-  const [analytics, setAnalytics] = useState(null);
   const [tab, setTab]           = useState('status');
   const [actionMsg, setActionMsg] = useState('');
 
@@ -39,7 +38,6 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
     if (!open) return;
     api('/stats').then(setStats).catch(() => {});
     api('/sources').then(setSources).catch(() => {});
-    api('/analytics').then(setAnalytics).catch(() => {});
   }, [open]);
 
   useEffect(() => { load(); }, [load]);
@@ -74,7 +72,7 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
 
         {/* Tabs */}
         <div className="admin-tabs">
-          {['status', 'sources', 'analytics', 'actions'].map(t => (
+          {['status', 'sources', 'actions'].map(t => (
             <button key={t} className={`admin-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
@@ -88,9 +86,7 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
             <>
               <Section title="Knowledge Base">
                 <div className="admin-stats-grid">
-                  <Stat label="Chunks" value={stats?.chunks?.toLocaleString()} />
                   <Stat label="Concepts" value={stats?.concepts?.toLocaleString()} />
-                  <Stat label="Traditions" value={stats?.traditions} />
                   <Stat label="Sources" value={stats?.sources?.length} />
                 </div>
                 {stats?.builtAt && (
@@ -108,11 +104,9 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
                 </div>
               </Section>
 
-              <Section title="Usage">
+              <Section title="Upgrade Queue">
                 <div className="admin-stats-grid">
-                  <Stat label="Sessions" value={stats?.sessions?.toLocaleString()} />
-                  <Stat label="Chat Logs" value={stats?.chatLogs?.toLocaleString()} />
-                  <Stat label="Sonnet Queue" value={stats?.sonnetQueued} sub="chunks for upgrade" />
+                  <Stat label="Sonnet Queued" value={stats?.sonnetQueued} sub="chunks flagged for upgrade" />
                 </div>
               </Section>
 
@@ -161,52 +155,6 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
                 ))
               }
             </Section>
-          )}
-
-          {/* ANALYTICS TAB */}
-          {tab === 'analytics' && (
-            <>
-              <Section title="Top Subjects Asked">
-                {!analytics?.subjects?.length
-                  ? <p className="admin-empty">No data yet — start chatting</p>
-                  : analytics.subjects.map((s, i) => (
-                    <div key={i} className="admin-analytics-row">
-                      <span className="admin-analytics-label">{s.subject?.replace(/"/g, '')}</span>
-                      <span className="admin-analytics-count">{s.query_count}</span>
-                    </div>
-                  ))
-                }
-              </Section>
-              <Section title="Most Retrieved Chunks">
-                {!analytics?.hotChunks?.length
-                  ? <p className="admin-empty">No data yet</p>
-                  : analytics.hotChunks.slice(0, 10).map((c, i) => (
-                    <div key={i} className="admin-analytics-row">
-                      <span className="admin-analytics-label">{c.source?.replace('.pdf', '')} #{c.chunk_index}</span>
-                      <div className="flex items-center gap-2">
-                        {c.sonnet_queued && !c.sonnet_done && <span className="admin-badge amber">queued</span>}
-                        {c.sonnet_done && <span className="admin-badge green">upgraded</span>}
-                        <span className="admin-analytics-count">{c.query_count}×</span>
-                      </div>
-                    </div>
-                  ))
-                }
-              </Section>
-              <Section title="Recent Questions">
-                {!analytics?.recentLogs?.length
-                  ? <p className="admin-empty">No logs yet</p>
-                  : analytics.recentLogs.map((l, i) => (
-                    <div key={i} className="admin-log-row">
-                      <div className="admin-log-msg">{l.user_message?.slice(0, 100)}</div>
-                      <div className="admin-log-meta">
-                        <span className="admin-badge slate">{l.mode}</span>
-                        <span>{new Date(l.created_at).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))
-                }
-              </Section>
-            </>
           )}
 
           {/* ACTIONS TAB */}
