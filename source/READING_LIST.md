@@ -12,6 +12,13 @@ Source PDFs for the knowledge base. Primary source: books.google.com
 - [x] The 4 Vedas
 - [x] Buddhist texts (en163-1)
 
+## Religious Texts (to source)
+- [ ] Book of Mormon — churchofjesuschrist.org (free PDF)
+- [ ] Ellen G. White — *The Great Controversy* — whiteestate.org (free)
+- [ ] Ellen G. White — *The Desire of Ages* — whiteestate.org (free)
+- [ ] Ellen G. White — *Steps to Christ* — whiteestate.org (free)
+- [ ] Ellen G. White — *Patriarchs and Prophets* — whiteestate.org (free)
+
 ---
 
 ## Ancient / Classical Philosophy
