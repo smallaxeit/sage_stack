@@ -1,0 +1,26 @@
+# Secrets
+server/.env
+
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Build output
+client/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large data — knowledge base is regenerable, keep out of git
+server/knowledge-base.json
+server/knowledge-cache.json
+server/build-progress.json
+
+# Source PDFs — large binaries, store separately
+source/*.pdf
