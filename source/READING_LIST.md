@@ -48,6 +48,29 @@ Source PDFs for the knowledge base. Primary source: books.google.com
 
 ---
 
+## Objectivism — Ayn Rand
+- [ ] Ayn Rand — *The Virtue of Selfishness*
+- [ ] Ayn Rand — *Capitalism: The Unknown Ideal*
+- [ ] Ayn Rand — *Philosophy: Who Needs It*
+- [ ] Ayn Rand — *The Fountainhead* (fiction / philosophical novel)
+- [ ] Ayn Rand — *Atlas Shrugged* (fiction / philosophical novel)
+
+---
+
+## Libertarianism & Classical Liberalism
+- [ ] Frédéric Bastiat — *The Law*
+- [ ] Friedrich Hayek — *The Road to Serfdom*
+- [ ] Friedrich Hayek — *The Constitution of Liberty*
+- [ ] Milton Friedman — *Capitalism and Freedom*
+- [ ] Murray Rothbard — *For a New Liberty*
+- [ ] Murray Rothbard — *The Ethics of Liberty*
+- [ ] Robert Nozick — *Anarchy, State, and Utopia*
+- [ ] Ludwig von Mises — *Liberalism*
+- [ ] Thomas Paine — *Rights of Man*
+- [ ] Thomas Paine — *Common Sense*
+
+---
+
 ## Notes
 - Drop PDFs into `/source/` and run `npm run build:knowledge`
 - Only new files are analyzed — existing chunks load from cache
