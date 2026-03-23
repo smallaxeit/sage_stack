@@ -63,8 +63,8 @@ ${mode === 'quick'
 }`;
 }
 
-function buildContext(lastUserMessage) {
-  const results = search(lastUserMessage, 10);
+async function buildContext(lastUserMessage) {
+  const results = await search(lastUserMessage, 10);
 
   console.log(`\n[chat] Query: "${lastUserMessage.slice(0, 80)}"`);
   console.log(`[chat] Retrieved ${results.length} chunks:`);
@@ -99,12 +99,17 @@ function buildContext(lastUserMessage) {
     }
   }
 
-  return { contextStr, sources, chips };
+  // Analytics metadata — subjects/themes aggregated from retrieved chunks
+  const allSubjects = [...new Set(results.flatMap(r => r.concepts || []))].slice(0, 20);
+  const allThemes   = [...new Set(results.flatMap(r => r.themes   || []))].slice(0, 10);
+  const chunkRefs   = results.map(r => ({ source: r.source, chunk_index: r.chunk_index }));
+
+  return { contextStr, sources, chips, analytics: { subjects: allSubjects, themes: allThemes, chunkRefs } };
 }
 
 export async function chat(messages, mode = 'deep') {
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-  const { contextStr, sources, chips } = buildContext(lastUserMessage);
+  const { contextStr, sources, chips, analytics } = await buildContext(lastUserMessage);
   const systemPrompt = buildSystemPrompt(mode) + contextStr;
 
   const response = await getClient().messages.create({
@@ -115,12 +120,12 @@ export async function chat(messages, mode = 'deep') {
   });
 
   console.log(`[chat] Response length: ${response.content[0].text.length} chars\n`);
-  return { text: response.content[0].text, sources, chips };
+  return { text: response.content[0].text, sources, chips, analytics };
 }
 
 export async function chatStream(messages, onChunk, mode = 'deep') {
   const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-  const { contextStr, sources, chips } = buildContext(lastUserMessage);
+  const { contextStr, sources, chips, analytics } = await buildContext(lastUserMessage);
   const systemPrompt = buildSystemPrompt(mode) + contextStr;
 
   const stream = await getClient().messages.stream({
@@ -138,6 +143,9 @@ export async function chatStream(messages, onChunk, mode = 'deep') {
     }
   }
 
-  console.log(`[chat] Stream complete, ${fullText.length} chars\n`);
-  return { text: fullText, sources, chips };
+  const finalMessage = await stream.finalMessage();
+  const outputTokens = finalMessage?.usage?.output_tokens || 0;
+
+  console.log(`[chat] Stream complete, ${fullText.length} chars, ${outputTokens} tokens\n`);
+  return { text: fullText, sources, chips, analytics, outputTokens };
 }

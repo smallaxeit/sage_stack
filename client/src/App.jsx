@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Chat from './components/Chat';
+import AdminPanel from './components/AdminPanel';
 
 const THEMES = ['dark', 'light'];
 const THEME_ICONS = { dark: '🌙', light: '☀️' };
@@ -10,6 +11,7 @@ export default function App() {
   const [buildProgress, setBuildProgress] = useState(null);
   const [building, setBuilding] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('ss-theme') || 'dark');
+  const [adminOpen, setAdminOpen] = useState(false);
   const pollRef = useRef(null);
 
   // Apply theme to root
@@ -95,13 +97,12 @@ export default function App() {
               {THEME_ICONS[theme]}
             </button>
             <button
-              onClick={startBuild}
-              disabled={building}
-              title="Rebuild knowledge base from /source/"
-              className="text-xs px-2.5 py-1 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setAdminOpen(true)}
+              title="Admin panel"
+              className="text-xs px-2.5 py-1 rounded-lg transition-colors"
               style={{ border: '1px solid var(--header-icon-border)', color: 'var(--header-meta)' }}
             >
-              {building ? 'Building…' : '⚙ Build'}
+              ⚙
             </button>
           </div>
         </div>
@@ -153,6 +154,13 @@ export default function App() {
       <main className="flex-1 overflow-hidden">
         <Chat ready={ready} />
       </main>
+
+      {/* Admin panel */}
+      <AdminPanel
+        open={adminOpen}
+        onClose={() => setAdminOpen(false)}
+        buildProgress={buildProgress}
+      />
     </div>
   );
 }
