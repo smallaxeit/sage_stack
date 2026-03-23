@@ -2,13 +2,67 @@
 
 > *From scripture to social contract*
 
-A Socratic teaching chatbot that guides students through theology, philosophy, and ethics — from the Bible and Quran to the Vedas and beyond. Powered by Claude AI with a deep pre-analyzed knowledge base built from sacred texts.
+SageStack is a knowledge-driven teaching platform that guides learners through the world's great religious texts, philosophical traditions, and ethical frameworks. It doesn't just answer questions — it teaches you how to think through them.
+
+No prior knowledge required. All learners welcome.
 
 ---
 
-## What it does
+## The teaching philosophy
 
-Students ask questions in plain language — casual, curious, skeptical, or blunt. SageStack answers directly with scholarly depth, then ends every response with Socratic questions that push thinking further. It draws only from the loaded source texts, cites its sources, and suggests related topics to explore.
+SageStack is built on the **Socratic method** — the oldest and most effective form of intellectual teaching, traced to Socrates in ancient Athens and practiced by great teachers across every tradition since.
+
+Rather than lecturing, SageStack:
+- **Answers directly** — no gatekeeping, no hedging. You get a real, substantive answer grounded in the source texts.
+- **Then asks back** — every response ends with genuine Socratic questions designed to open the next layer of thinking and guide you toward your own conclusions.
+- **Meets you where you are** — whether you're a theology student, a curious skeptic, someone raised in the faith, or someone who just wants to understand what all this is about. Ask in whatever voice comes naturally.
+
+The goal isn't to tell you what to believe. It's to help you think more clearly about what you already believe — and what you don't.
+
+---
+
+## What it covers
+
+SageStack draws from across the world's major religious and philosophical traditions:
+
+| Text | Tradition |
+|------|-----------|
+| The Holy Bible (KJV) | Christianity |
+| Ethiopian Orthodox Bible | Orthodox Christianity |
+| Torah | Judaism |
+| Quran | Islam |
+| The 4 Vedas | Hinduism |
+| Buddhist texts | Buddhism |
+
+Topics span theology, comparative religion, ethics, philosophy of religion, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from dharma to divine command theory.
+
+---
+
+## How it works
+
+### Knowledge pipeline
+Source texts are pre-processed before the app runs. Each document is:
+1. Parsed and broken into contextual chunks
+2. Deeply analyzed by AI — extracting concepts, scripture references, philosophical arguments, cross-text connections, and origin context
+3. Indexed for fast semantic search
+
+This happens once. Results are cached permanently — adding new texts only processes the new material.
+
+### Chat
+When you ask a question, the most relevant passages from across all source texts are retrieved and used to ground the response. The AI teaches strictly from the loaded texts — if it's not in the source material, it says so plainly.
+
+---
+
+## Features
+
+- **Streaming responses** — answers appear as they're generated, not all at once
+- **Quick / Deep mode** — concise accessible answers or full scholarly treatment
+- **Explore chips** — clickable concept suggestions after each response to keep the inquiry going
+- **Source citations** — see exactly which texts were used to generate each answer
+- **Dark / Light theme** — persists across sessions
+- **Expandable knowledge base** — drop in new PDFs and rebuild anytime
+
+---
 
 ## Stack
 
@@ -16,30 +70,9 @@ Students ask questions in plain language — casual, curious, skeptical, or blun
 |-------|------|
 | Frontend | React + Vite + Tailwind CSS |
 | Backend | Node.js + Express |
-| AI | Claude Sonnet (claude-sonnet-4-6) |
+| AI | Claude Sonnet |
 | Knowledge | TF-IDF vector search + RAG |
-| Build | Pre-build PDF analysis pipeline |
-
-## Source texts
-
-- The Holy Bible (KJV)
-- Ethiopian Orthodox Bible
-- Torah
-- The 4 Vedas
-- Quran (ClearQuran English translation)
-- Buddhist texts
-
-## How it works
-
-### Pre-build pipeline
-Drop PDFs into `/source/`, then run:
-```bash
-npm run build:knowledge
-```
-This parses → chunks → analyzes each chunk with Claude (extracting concepts, scripture refs, philosophical arguments, cross-text connections) → builds a concept map → generates TF-IDF vectors. Results are cached — only new chunks are billed on subsequent runs.
-
-### Chat
-On every message, the top 10 most relevant chunks are retrieved via cosine similarity and injected into the system prompt. Claude responds as a rigorous professor, anchored to the source material.
+| Build pipeline | Pre-build PDF analysis |
 
 ---
 
@@ -53,28 +86,16 @@ cd ../client && npm install
 
 # Add your Anthropic API key
 cp server/.env.example server/.env
-# Edit server/.env and add ANTHROPIC_API_KEY=sk-ant-...
+# Edit server/.env → ANTHROPIC_API_KEY=sk-ant-...
 
-# Build the knowledge base (one-time, ~$50, takes several hours)
+# Build the knowledge base (one-time)
 npm run build:knowledge
 
 # Run the app
-npm run dev          # starts both server (3001) and client (5199)
+npm run dev    # server on :3001, client on :5199
 ```
 
 Open [http://localhost:5199](http://localhost:5199)
-
----
-
-## Features
-
-- **Streaming responses** — words appear as they're generated
-- **Quick / Deep mode** — short accessible answers vs full scholarly treatment
-- **Explore chips** — clickable concept pills after each response
-- **Source citations** — expandable panel showing which texts were used
-- **Dark / Light theme** — persists across sessions
-- **Build button** — trigger knowledge rebuild from the UI
-- **Progress bar** — live ETA during builds
 
 ---
 
@@ -82,21 +103,21 @@ Open [http://localhost:5199](http://localhost:5199)
 
 ```
 /
-├── client/          # React + Vite frontend
+├── client/                      # React + Vite frontend
 │   └── src/
-│       ├── App.jsx
+│       ├── App.jsx              # Layout, header, build status
 │       └── components/
-│           ├── Chat.jsx
-│           └── Message.jsx
-├── server/          # Node/Express backend
-│   ├── build-knowledge.js   # Pre-build pipeline
+│           ├── Chat.jsx         # Chat interface + mode toggle
+│           └── Message.jsx      # Message bubbles, chips, citations
+├── server/                      # Node/Express backend
+│   ├── build-knowledge.js       # Pre-build pipeline
 │   ├── lib/
-│   │   ├── claude.js        # Claude API + RAG
-│   │   ├── vectorStore.js   # TF-IDF search
-│   │   └── parser.js        # PDF/text parsing
+│   │   ├── claude.js            # AI integration + RAG + system prompt
+│   │   ├── vectorStore.js       # TF-IDF vector search
+│   │   └── parser.js            # PDF and text parsing
 │   └── routes/
-│       └── chat.js          # API routes
-└── source/          # Drop PDFs here
+│       └── chat.js              # API routes
+└── source/                      # Drop source PDFs here
 ```
 
 ---
@@ -104,6 +125,6 @@ Open [http://localhost:5199](http://localhost:5199)
 ## Notes
 
 - `.env` is gitignored — never commit your API key
-- `knowledge-base.json` and `knowledge-cache.json` are gitignored (large, regenerable)
+- `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up separately, they represent your built knowledge
 - Source PDFs are gitignored — store separately
 - Session history is in-memory — clears on server restart
