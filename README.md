@@ -23,8 +23,9 @@ The goal isn't to tell you what to believe. It's to help you think more clearly 
 
 ## What it covers
 
-SageStack draws from across the world's major religious and philosophical traditions:
+SageStack draws from the world's major religious and philosophical traditions. The knowledge base is designed to grow.
 
+### Religious texts (loaded)
 | Text | Tradition |
 |------|-----------|
 | The Holy Bible (KJV) | Christianity |
@@ -34,7 +35,25 @@ SageStack draws from across the world's major religious and philosophical tradit
 | The 4 Vedas | Hinduism |
 | Buddhist texts | Buddhism |
 
+### Philosophy (expanding)
+| Text | School |
+|------|--------|
+| Plato — *Republic*, *Phaedo*, *Meno* | Ancient / Classical |
+| Aristotle — *Nicomachean Ethics*, *Politics* | Ancient / Classical |
+| Marcus Aurelius — *Meditations* | Stoicism |
+| Epictetus — *Discourses* | Stoicism |
+| Thomas Hobbes — *Leviathan* | Social Contract |
+| John Locke — *Two Treatises of Government* | Social Contract |
+| Jean-Jacques Rousseau — *The Social Contract* | Social Contract |
+| John Stuart Mill — *Utilitarianism*, *On Liberty* | Liberalism |
+| Immanuel Kant — *Groundwork for the Metaphysics of Morals* | Deontology |
+| Thomas Aquinas — *Summa Theologica* | Natural Law |
+| René Descartes — *Meditations on First Philosophy* | Modern |
+| Friedrich Nietzsche — *Beyond Good and Evil* | Continental |
+
 Topics span theology, comparative religion, ethics, philosophy of religion, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from dharma to divine command theory.
+
+See `source/READING_LIST.md` for the full list with load status.
 
 ---
 
@@ -43,13 +62,18 @@ Topics span theology, comparative religion, ethics, philosophy of religion, and 
 ### Knowledge pipeline
 Source texts are pre-processed before the app runs. Each document is:
 1. Parsed and broken into contextual chunks
-2. Deeply analyzed by AI — extracting concepts, scripture references, philosophical arguments, cross-text connections, and origin context
-3. Indexed for fast semantic search
+2. Analyzed by AI (Claude Haiku) — extracting concepts, scripture references, philosophical arguments, cross-text connections, and origin context
+3. A concept map is built across all traditions (Claude Sonnet) — cross-tradition relationships, learning paths, theological parallels
+4. Embedded with Voyage AI (voyage-3) for semantic vector search
+5. Synced to Supabase for persistence
 
-This happens once. Results are cached permanently — adding new texts only processes the new material.
+This happens once per source. Results are cached — adding new texts only processes new material. The reading list (`source/READING_LIST.md`) is auto-updated after each build.
 
 ### Chat
-When you ask a question, the most relevant passages from across all source texts are retrieved and used to ground the response. The AI teaches strictly from the loaded texts — if it's not in the source material, it says so plainly.
+When you ask a question, the most semantically relevant passages from across all source texts are retrieved via pgvector and used to ground the response. The AI teaches strictly from the loaded texts — if it's not in the source material, it says so plainly.
+
+### Analytics (background)
+Every chat interaction is logged to Supabase — subjects, themes, which chunks were retrieved. Frequently-queried chunks are automatically flagged for deeper Sonnet re-analysis. All of this happens silently in the background and is accessible directly via the Supabase dashboard.
 
 ---
 
@@ -57,10 +81,11 @@ When you ask a question, the most relevant passages from across all source texts
 
 - **Streaming responses** — answers appear as they're generated, not all at once
 - **Quick / Deep mode** — concise accessible answers or full scholarly treatment
-- **Explore chips** — clickable concept suggestions after each response to keep the inquiry going
+- **Explore chips** — clickable concept suggestions after each response
 - **Source citations** — see exactly which texts were used to generate each answer
 - **Dark / Light theme** — persists across sessions
-- **Expandable knowledge base** — drop in new PDFs and rebuild anytime
+- **Admin panel** — manage builds, view source status, trigger embeddings and concept map rebuilds
+- **Expandable knowledge base** — drop in new PDFs, rebuild, reading list updates automatically
 
 ---
 
@@ -70,10 +95,11 @@ When you ask a question, the most relevant passages from across all source texts
 |-------|------|
 | Frontend | React + Vite + Tailwind CSS |
 | Backend | Node.js + Express |
-| AI | Claude Sonnet |
+| Chat AI | Claude Sonnet (claude-sonnet-4-6) |
+| Build AI | Claude Haiku (chunk analysis) + Claude Sonnet (concept map) |
+| Embeddings | Voyage AI voyage-3 (1024-dim semantic search) |
 | Database | Supabase (PostgreSQL + pgvector) |
-| Knowledge | TF-IDF vector search + RAG |
-| Build pipeline | Pre-build PDF analysis |
+| Search | pgvector cosine similarity → TF-IDF fallback |
 
 ---
 
@@ -89,14 +115,18 @@ cd ../client && npm install
 cp server/.env.example server/.env
 # Edit server/.env:
 #   ANTHROPIC_API_KEY=sk-ant-...
+#   VOYAGE_API_KEY=pa-...
 #   SUPABASE_URL=https://your-project.supabase.co
 #   SUPABASE_ANON_KEY=...
 #   SUPABASE_SERVICE_KEY=...
+#   ADMIN_KEY=your-admin-password
 
-# Set up the database (one-time)
-# Run server/supabase-schema.sql in your Supabase SQL Editor
+# Set up the database (one-time — run in Supabase SQL Editor)
+# 1. server/supabase-schema.sql
+# 2. server/supabase-analytics.sql
+# 3. server/supabase-vector-search.sql
 
-# Build the knowledge base (one-time, ~$50, several hours)
+# Build the knowledge base (one-time)
 npm run build:knowledge
 
 # Run the app
@@ -111,30 +141,38 @@ Open [http://localhost:5199](http://localhost:5199)
 
 ```
 /
-├── client/                      # React + Vite frontend
+├── client/                        # React + Vite frontend
 │   └── src/
-│       ├── App.jsx              # Layout, header, build status
+│       ├── App.jsx                # Layout, header, theme
 │       └── components/
-│           ├── Chat.jsx         # Chat interface + mode toggle
-│           └── Message.jsx      # Message bubbles, chips, citations
-├── server/                      # Node/Express backend
-│   ├── build-knowledge.js       # Pre-build pipeline
-│   ├── supabase-schema.sql      # Database schema — run once in Supabase
+│           ├── Chat.jsx           # Chat interface + mode toggle
+│           ├── Message.jsx        # Message bubbles, chips, citations
+│           └── AdminPanel.jsx     # Admin slide-out panel
+├── server/                        # Node/Express backend
+│   ├── build-knowledge.js         # Pre-build pipeline
+│   ├── rebuild-concepts.js        # Standalone concept map rebuild
+│   ├── supabase-schema.sql        # Core DB schema
+│   ├── supabase-analytics.sql     # Analytics tables, functions, views
+│   ├── supabase-vector-search.sql # pgvector match_chunks function
 │   ├── lib/
-│   │   ├── claude.js            # AI integration + RAG + system prompt
-│   │   ├── supabase.js          # Supabase client (server + public)
-│   │   ├── vectorStore.js       # TF-IDF vector search
-│   │   └── parser.js            # PDF and text parsing
+│   │   ├── claude.js              # AI integration + RAG + system prompt
+│   │   ├── embeddings.js          # Voyage AI embeddings + pgvector search
+│   │   ├── supabase.js            # Supabase lazy clients
+│   │   ├── vectorStore.js         # Search (pgvector → TF-IDF fallback)
+│   │   └── parser.js              # PDF and text parsing
 │   └── routes/
-│       └── chat.js              # API routes
-└── source/                      # Drop source PDFs here
+│       ├── chat.js                # Chat API + session management
+│       └── admin.js               # Admin API routes
+└── source/                        # Drop source PDFs here
+    └── READING_LIST.md            # Tracked source list, auto-updated on build
 ```
 
 ---
 
 ## Notes
 
-- `.env` is gitignored — never commit your API key
-- `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up separately, they represent your built knowledge
-- Source PDFs are gitignored — store separately
-- Session history persists in Supabase — survives server restarts
+- `.env` is gitignored — never commit API keys
+- `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up, they represent your paid analysis work
+- Source PDFs are gitignored — store separately (books.google.com for public domain texts)
+- Sessions persist in Supabase — survive server restarts
+- Analytics log silently to Supabase — query via dashboard when needed

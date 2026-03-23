@@ -280,6 +280,53 @@ function chunkHash(chunk) {
   return `${chunk.source}::${chunk.text.slice(0, 100)}`;
 }
 
+// ─── Reading list updater ─────────────────────────────────────────────────────
+
+const READING_LIST = path.join(__dirname, '../source/READING_LIST.md');
+
+async function updateReadingList(chunks) {
+  try {
+    const loadedSources = new Set(chunks.map(c => c.source.replace('.pdf', '').toLowerCase()));
+    let md = await fs.readFile(READING_LIST, 'utf-8');
+
+    // Process each line — match checked items and stamp analyzed ones
+    md = md.split('\n').map(line => {
+      // Match lines like: - [x] Some Title or - [x] Some Title ✓ analyzed
+      const match = line.match(/^(\s*-\s*\[)(x)(\]\s*)(.+?)(\s*✓ analyzed)?$/i);
+      if (!match) return line;
+
+      const prefix   = match[1]; // "- ["
+      const check    = match[2]; // "x"
+      const middle   = match[3]; // "] "
+      const title    = match[4].trim();
+      const already  = !!match[5];
+
+      // Normalize title to compare against loaded sources
+      // Strip author prefix "Author — *Title*" → just title
+      const cleanTitle = title
+        .replace(/^.*?—\s*/, '')        // remove "Author — "
+        .replace(/\*/g, '')              // remove markdown bold/italic
+        .replace(/\s*\(.*?\)/g, '')      // remove parenthetical "(selections)"
+        .trim()
+        .toLowerCase();
+
+      const isLoaded = [...loadedSources].some(s =>
+        s.includes(cleanTitle.slice(0, 12)) || cleanTitle.includes(s.slice(0, 12))
+      );
+
+      if (isLoaded && !already) {
+        return `${prefix}${check}${middle}${title} ✓ analyzed`;
+      }
+      return line;
+    }).join('\n');
+
+    await fs.writeFile(READING_LIST, md);
+    console.log('8. Reading list updated ✓');
+  } catch (err) {
+    console.warn('   Could not update reading list:', err.message);
+  }
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -448,6 +495,9 @@ async function main() {
 
     console.log(`\n  ✓ Supabase synced — ${rows.length} chunks`);
   }
+
+  // 8. Update reading list
+  await updateReadingList(allChunks);
 
   await writeProgress({ status: 'done', phase: 'complete', current: allChunks.length, total: allChunks.length, pct: 100, concepts: conceptMap.concepts?.length || 0 });
   console.log(`\n✓ Knowledge base saved to server/knowledge-base.json`);
