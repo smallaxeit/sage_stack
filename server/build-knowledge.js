@@ -22,6 +22,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 import { loadContentDir } from './lib/parser.js';
 import { buildEmbeddings } from './lib/embeddings.js';
+import { friendlySourceName } from './lib/claude.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -261,35 +262,85 @@ async function buildConceptMap(allMeta, sources) {
   const conceptData = { sources, concepts: topConcepts, arguments: allArgs };
 
   try {
-    const response = await client.messages.create({
+    // Use streaming to avoid connection timeouts on large responses
+    let fullText = '';
+    const stream = await client.messages.stream({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       messages: [{ role: 'user', content: CONCEPT_MAP_PROMPT(conceptData) }],
     });
-
-    const raw = response.content[0].text.trim()
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text_delta') {
+        fullText += chunk.delta.text;
+      }
+    }
+    const raw = fullText.trim()
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```$/, '');
     return JSON.parse(raw);
   } catch (err) {
-    console.error(`  Concept map failed: ${err.message}`);
-    return { coreThemes: [], concepts: [], relationships: [], learningPath: [] };
+    // Re-throw so the build fails loudly rather than silently writing an empty concept map
+    throw new Error(`Concept map failed: ${err.message}`);
   }
 }
 
 // ─── Cache helpers ────────────────────────────────────────────────────────────
 
+const CACHE_BAK = CACHE_FILE + '.bak';
+
 async function loadCache() {
+  let primaryErr = null;
+
+  // Try primary
   try {
     const raw = await fs.readFile(CACHE_FILE, 'utf-8');
-    return JSON.parse(raw);
-  } catch {
+    const parsed = JSON.parse(raw);
+    console.log(`  Cache loaded: ${Object.keys(parsed).length} entries`);
+    return parsed;
+  } catch (e) {
+    primaryErr = e.message;
+  }
+
+  // Try backup
+  try {
+    const raw = await fs.readFile(CACHE_BAK, 'utf-8');
+    const parsed = JSON.parse(raw);
+    console.error(`  ❌ PRIMARY CACHE CORRUPT: ${primaryErr}`);
+    console.warn(`  ⚠️  Restored from backup — ${Object.keys(parsed).length} entries recovered. Last batch may be missing.`);
+    return parsed;
+  } catch (e) {
+    // Both failed — this is a real problem
+    const primaryMissing = primaryErr.includes('ENOENT');
+    if (primaryMissing) {
+      console.log('  No cache found — starting fresh');
+    } else {
+      const errMsg = `CACHE UNRECOVERABLE — Primary: ${primaryErr} | Backup: ${e.message}`;
+      console.error(`\n  ❌ ${errMsg}`);
+      console.error(`     All prior analysis will be re-run. Check disk for corruption.\n`);
+      // Write to progress file immediately so the UI shows it
+      await writeProgress({ status: 'error', phase: 'cache', message: errMsg });
+      // Also append to a persistent error log
+      const LOG_FILE = path.join(__dirname, 'build-errors.log');
+      const entry = `[${new Date().toISOString()}] ${errMsg}\n`;
+      await fs.appendFile(LOG_FILE, entry);
+    }
     return {};
   }
 }
 
 async function saveCache(cache) {
-  await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2));
+  const tmp = CACHE_FILE + '.tmp';
+  const data = JSON.stringify(cache, null, 2);
+  // 1. write to temp
+  await fs.writeFile(tmp, data);
+  // 2. promote current → backup (if current exists and is valid)
+  try {
+    const existing = await fs.readFile(CACHE_FILE, 'utf-8');
+    JSON.parse(existing); // only back up if it's valid JSON
+    await fs.copyFile(CACHE_FILE, CACHE_BAK);
+  } catch { /* no valid current to back up */ }
+  // 3. atomic promote temp → primary
+  await fs.rename(tmp, CACHE_FILE);
 }
 
 function chunkHash(chunk) {
@@ -377,6 +428,13 @@ async function main() {
   }
   console.log(`   Total: ${allChunks.length} chunks\n`);
 
+  // Write initial source list so the admin UI can show all sources (including new ones at 0%) immediately
+  const allSources = [...new Set(allChunks.map(c => c.source))];
+  await writeProgress({
+    status: 'running', phase: 'analyzing', current: 0, total: allChunks.length, pct: 0,
+    sourceProgress: allSources.map(filename => ({ filename, source: friendlySourceName(filename), total: allChunks.filter(c => c.source === filename).length, analyzed: 0 })),
+  });
+
   // 3. Deep AI analysis with caching (Sonnet, per-chunk)
   console.log('3. Analyzing chunks with Claude Sonnet (deep mode)...');
   console.log(`   ${allChunks.length} chunks to analyze — caching enabled, safe to interrupt\n`);
@@ -401,9 +459,26 @@ async function main() {
     }
   }
 
+  // Helper: compute per-source analyzed counts from current chunkMeta state
+  function sourceProgress() {
+    const map = {};
+    for (let i = 0; i < allChunks.length; i++) {
+      const src = allChunks[i].source;
+      if (!map[src]) map[src] = { total: 0, analyzed: 0 };
+      map[src].total++;
+      if (chunkMeta[i]?.summary) map[src].analyzed++;
+    }
+    return Object.entries(map).map(([filename, s]) => ({
+      filename,
+      source: friendlySourceName(filename),
+      total: s.total,
+      analyzed: s.analyzed,
+    }));
+  }
+
   if (cacheHits > 0) {
     console.log(`   ${cacheHits} from cache, ${toAnalyze.length} need analysis\n`);
-    await writeProgress({ status: 'running', phase: 'analyzing', current: cacheHits, total: allChunks.length, pct: Math.round(cacheHits / allChunks.length * 100) });
+    await writeProgress({ status: 'running', phase: 'analyzing', current: cacheHits, total: allChunks.length, pct: Math.round(cacheHits / allChunks.length * 100), sourceProgress: sourceProgress() });
   }
 
   // Process in parallel batches
@@ -425,7 +500,7 @@ async function main() {
     const remaining = Math.round((toAnalyze.length - b - batch.length) / rate / 60);
     const bar = '█'.repeat(Math.floor(pct / 5)) + '░'.repeat(20 - Math.floor(pct / 5));
     console.log(`\n  [${bar}] ${pct}% — ${completed}/${allChunks.length} — ${elapsed}m elapsed — ~${remaining}m remaining\n`);
-    await writeProgress({ status: 'running', phase: 'analyzing', current: completed, total: allChunks.length, pct, remainingMins: remaining });
+    await writeProgress({ status: 'running', phase: 'analyzing', current: completed, total: allChunks.length, pct, remainingMins: remaining, sourceProgress: sourceProgress() });
   }
 
   console.log(`\n   Done. ${cacheHits} from cache, ${toAnalyze.length} newly analyzed\n`);
@@ -435,6 +510,12 @@ async function main() {
   await writeProgress({ status: 'running', phase: 'concept-map', current: allChunks.length, total: allChunks.length, pct: 98 });
   const sources = [...new Set(allChunks.map(c => c.source))];
   const conceptMap = await buildConceptMap(chunkMeta, sources);
+
+  if (!conceptMap.concepts?.length) {
+    await writeProgress({ status: 'error', phase: 'concept-map', message: 'Concept map returned empty — check Claude API key and credits' });
+    throw new Error('Concept map returned 0 concepts. Build aborted to avoid overwriting good data.');
+  }
+
   console.log(`   ${conceptMap.concepts?.length || 0} concepts mapped`);
   console.log(`   ${conceptMap.relationships?.length || 0} relationships`);
   console.log(`   ${conceptMap.traditions?.length || 0} traditions`);
@@ -445,29 +526,32 @@ async function main() {
   const vectors = buildTfidf(allChunks);
   console.log(`   Built ${vectors.length} vectors\n`);
 
-  // 6. Assemble and save
-  console.log('6. Saving knowledge base...');
-  const knowledgeBase = {
-    meta: {
-      builtAt: new Date().toISOString(),
-      totalChunks: allChunks.length,
-      sources: [...new Set(allChunks.map(c => c.source))],
-      totalConcepts: conceptMap.concepts?.length || 0,
-    },
-    conceptMap,
-    chunks: allChunks.map((chunk, i) => ({
-      id: i,
-      source: chunk.source,
-      text: chunk.text,
-      meta: chunkMeta[i] || {},
-      vector: vectors[i],
-    })),
-  };
+  // Attach meta to each chunk before sync + stats
+  allChunks.forEach((chunk, i) => { chunk.meta = chunkMeta[i] || {}; });
 
-  await fs.writeFile(OUTPUT_FILE, JSON.stringify(knowledgeBase, null, 2));
+  // 6. Save lightweight meta file (sources + concept map — all the server needs at startup)
+  console.log('6. Saving knowledge meta...');
+  const sourceStats = sources.map(src => {
+    const srcChunks = allChunks.filter(c => c.source === src);
+    return {
+      filename: src,
+      total: srcChunks.length,
+      analyzed: srcChunks.filter(c => c.meta?.summary).length,
+    };
+  });
+  const knowledgeMeta = {
+    builtAt: new Date().toISOString(),
+    totalChunks: allChunks.length,
+    sources,
+    sourceStats,
+    totalConcepts: conceptMap.concepts?.length || 0,
+    conceptMap,
+  };
+  const META_FILE = path.join(__dirname, 'knowledge-meta.json');
+  await fs.writeFile(META_FILE, JSON.stringify(knowledgeMeta, null, 2));
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  const sizeMB = ((await fs.stat(OUTPUT_FILE)).size / 1024 / 1024).toFixed(2);
+  const sizeMB = ((await fs.stat(META_FILE)).size / 1024 / 1024).toFixed(2);
 
   // 7. Sync to Supabase
   if (supabase) {
@@ -475,9 +559,9 @@ async function main() {
     await writeProgress({ status: 'running', phase: 'syncing', current: allChunks.length, total: allChunks.length, pct: 99 });
 
     // Upsert chunks in batches of 100
-    const rows = knowledgeBase.chunks.map((chunk) => ({
+    const rows = allChunks.map((chunk, i) => ({
       source: chunk.source,
-      chunk_index: chunk.id,
+      chunk_index: i,
       text: chunk.text,
       summary: chunk.meta?.summary || null,
       difficulty: chunk.meta?.difficulty || null,
@@ -530,13 +614,25 @@ async function main() {
     console.log('9. Skipping embeddings — VOYAGE_API_KEY or Supabase not configured');
   }
 
-  await writeProgress({ status: 'done', phase: 'complete', current: allChunks.length, total: allChunks.length, pct: 100, concepts: conceptMap.concepts?.length || 0 });
+  await writeProgress({ status: 'done', phase: 'complete', current: allChunks.length, total: allChunks.length, pct: 100, concepts: conceptMap.concepts?.length || 0, sources: sources.length });
   console.log(`\n✓ Knowledge base saved to server/knowledge-base.json`);
   console.log(`  ${allChunks.length} chunks · ${conceptMap.concepts?.length || 0} concepts · ${sizeMB}MB · ${elapsed}s`);
   console.log('\nReady to deploy. Run: npm run dev\n');
 }
 
-main().catch(err => {
-  console.error('\nBuild failed:', err);
+main().catch(async err => {
+  const errMsg = err.stack || err.message;
+  console.error('\n❌ Build failed:', errMsg);
+  const LOG_FILE = path.join(__dirname, 'build-errors.log');
+  const entry = `[${new Date().toISOString()}] BUILD CRASH: ${errMsg}\n`;
+  try { await fs.appendFile(LOG_FILE, entry); } catch {}
+  try {
+    await fs.writeFile(PROGRESS_FILE, JSON.stringify({
+      status: 'error',
+      phase: 'crashed',
+      message: err.message,
+      updatedAt: new Date().toISOString(),
+    }));
+  } catch {}
   process.exit(1);
 });

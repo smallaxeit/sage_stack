@@ -9,23 +9,27 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 ## Religious Texts — Loaded
 - [x] The Holy Bible (KJV) ✓ analyzed
 - [x] Ethiopian Orthodox Bible ✓ analyzed
-- [x] Torah ✓ analyzed
 - [x] Quran (ClearQuran English translation) ✓ analyzed
-- [x] The 4 Vedas ✓ analyzed
-- [x] Buddhist texts ✓ analyzed
+- [x] Book of Mormon — `book_of_mormon_missionary_english.pdf` ✓ analyzed
+- [x] Gospel of Thomas — `gospel-of-thomas.txt` — [gnosis.org](https://www.gnosis.org/naghamm/gthlamb.html) (Lambdin translation, Nag Hammadi Library) ✓ analyzed
+- [x] Ellen G. White — *The Great Controversy* — `en163-1.pdf` ✓ analyzed
 
-## Religious Texts — In Source
-- [x] Gospel of Thomas — `gospel-of-thomas.txt` — [gnosis.org](https://www.gnosis.org/naghamm/gthlamb.html) (Lambdin translation, Nag Hammadi Library)
-- [x] Ellen G. White — *The Great Controversy* — `en163-1.pdf`
+## Philosophy & Political Thought — Loaded
+- [x] Plato — *The Republic* — `plato-republic.txt` ✓ analyzed
+- [x] John Locke — *Two Treatises of Government* — `locke-two-treatises-of-government.txt` ✓ analyzed
+- [x] John Stuart Mill — *On Liberty* — `mill-on-liberty.txt` ✓ analyzed
+- [x] Thomas Paine — *Common Sense* — `paine-common-sense.txt` ✓ analyzed
+- [x] Patrick Henry — *Give Me Liberty or Give Me Death* — `patrick-henry-give-me-liberty.txt` ✓ analyzed
 
-## Religious Texts — To Source
-- [x] Book of Mormon — [churchofjesuschrist.org](https://www.churchofjesuschrist.org/study/scriptures/bofm?lang=eng) (free PDF) — manual download
+## Religious Texts — Parked (`/source/library/`)
+- [x] Torah — parked (duplicate coverage: KJV + Ethiopian Orthodox already include full OT)
+- [x] The 4 Vedas — parked (high chunk count, add when ready to expand)
+- [ ] Buddhist texts — not yet downloaded
 
 ---
 
 ## Ancient / Classical Philosophy
 *Public domain — downloaded to `/source/library/`*
-- [x] Plato — *The Republic* — `plato-republic.txt`
 - [x] Plato — *Phaedo* — `plato-phaedo.txt`
 - [x] Plato — *Meno* — `plato-meno.txt`
 - [x] Aristotle — *Nicomachean Ethics* — `aristotle-nicomachean-ethics.txt`
@@ -38,10 +42,8 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 ## Social Contract
 *Public domain — downloaded to `/source/library/`*
 - [x] Thomas Hobbes — *Leviathan* — `hobbes-leviathan.txt`
-- [x] John Locke — *Two Treatises of Government* — `locke-two-treatises-of-government.txt`
 - [x] Jean-Jacques Rousseau — *The Social Contract* — `rousseau-social-contract.txt`
 - [x] John Stuart Mill — *Utilitarianism* — `mill-utilitarianism.txt`
-- [x] John Stuart Mill — *On Liberty* — `mill-on-liberty.txt`
 
 ---
 
@@ -81,7 +83,6 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 - [ ] Robert Nozick — *Anarchy, State, and Utopia* — [archive.org](https://archive.org/search?query=anarchy+state+utopia+nozick) — manual download
 - [ ] Ludwig von Mises — *Liberalism* — [mises.org/library/liberalism-classical-tradition](https://mises.org/library/liberalism-classical-tradition) — manual download (free PDF)
 - [x] Thomas Paine — *Rights of Man* — `paine-rights-of-man.txt`
-- [x] Thomas Paine — *Common Sense* — `paine-common-sense.txt`
 
 ---
 

@@ -25,7 +25,7 @@ The goal isn't to tell you what to believe. It's to help you think more clearly 
 
 SageStack draws from the world's major religious and philosophical traditions. The knowledge base is designed to grow.
 
-### Religious texts
+### Religious texts — loaded
 | Text | Tradition |
 |------|-----------|
 | The Holy Bible — King James Version | Christianity |
@@ -34,33 +34,20 @@ SageStack draws from the world's major religious and philosophical traditions. T
 | Book of Mormon | Latter-day Saints |
 | Gospel of Thomas | Gnostic / Early Christian |
 | The Great Controversy — Ellen G. White | Seventh-day Adventist |
-| Buddhist texts | Buddhism |
 
-### Philosophy & Political Thought
+### Philosophy & Political Thought — loaded
 | Text | School |
 |------|--------|
-| Plato — *Republic*, *Phaedo*, *Meno* | Ancient / Classical |
-| Aristotle — *Nicomachean Ethics*, *Politics* | Ancient / Classical |
-| Marcus Aurelius — *Meditations* | Stoicism |
-| Epictetus — *Discourses* | Stoicism |
-| Thomas Aquinas — *Summa Theologica* | Natural Law |
-| Thomas Hobbes — *Leviathan* | Social Contract |
+| Plato — *The Republic* | Ancient / Classical |
 | John Locke — *Two Treatises of Government* | Social Contract |
-| Jean-Jacques Rousseau — *The Social Contract* | Social Contract |
-| David Hume — *Enquiry Concerning Human Understanding* | Empiricism |
-| Immanuel Kant — *Groundwork for the Metaphysics of Morals* | Deontology |
-| René Descartes — *Meditations on First Philosophy* | Rationalism |
-| John Stuart Mill — *Utilitarianism*, *On Liberty* | Liberalism |
-| Friedrich Nietzsche — *Beyond Good and Evil*, *Thus Spoke Zarathustra* | Continental |
-| Frédéric Bastiat — *The Law* | Classical Liberalism |
-| Thomas Paine — *Common Sense*, *Rights of Man* | American Founding |
-| Madison, Hamilton & Jay — *The Federalist Papers* | American Founding |
-| Thomas Jefferson — *Declaration of Independence*, *Notes on Virginia* | American Founding |
-| Benjamin Franklin — *Autobiography*, *Poor Richard's Almanack* | American Founding |
-| George Washington — *Farewell Address* | American Founding |
+| John Stuart Mill — *On Liberty* | Liberalism |
+| Thomas Paine — *Common Sense* | American Founding |
 | Patrick Henry — *Give Me Liberty or Give Me Death* | American Founding |
 
 Topics span theology, comparative religion, ethics, political philosophy, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from the Nag Hammadi scrolls to natural law.
+
+### Staged — ready to add
+30+ texts are downloaded and waiting in `/source/library/` including Aristotle, Marcus Aurelius, Aquinas, Hobbes, Rousseau, Kant, Hume, Nietzsche, Descartes, the Federalist Papers, Jefferson, Madison, Franklin, and more.
 
 See `READING_LIST.md` for the full source list with load status and staging queue.
 
@@ -183,7 +170,7 @@ Open [http://localhost:5199](http://localhost:5199)
 ## Notes
 
 - `.env` is gitignored — never commit API keys
-- `knowledge-base.json` and `knowledge-cache.json` are gitignored — back these up, they represent your analysis work
+- `knowledge-cache.json` is gitignored — if lost, run `node server/scripts/rebuild-cache-from-supabase.js` to restore from Supabase. Never re-analyze from scratch.
 - Source files are gitignored — store separately
 - Sessions persist in Supabase — survive server restarts
 - Analytics log silently to Supabase — query via dashboard when needed
