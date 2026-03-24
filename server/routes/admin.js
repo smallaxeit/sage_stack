@@ -1,14 +1,32 @@
 import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { buildEmbeddings } from '../lib/embeddings.js';
-import { getMeta, getConceptMap, getSources, loadKnowledgeBase } from '../lib/vectorStore.js';
-import { friendlySourceName } from '../lib/claude.js';
+import { getChunkCount, getMeta, getConceptMap, getKnowledgeBase } from '../lib/vectorStore.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
+
+// ─── Friendly source names ─────────────────────────────────────────────────────
+const SOURCE_ALIASES = {
+  'EthiopianOrthodoxBible.pdf':                                  'Ethiopian Orthodox Bible',
+  'The Holy Bible (KJV).pdf':                                    'The Holy Bible (KJV)',
+  'book_of_mormon_missionary_english.pdf':                       'The Book of Mormon',
+  'en163-1.pdf':                                                 'The Great Controversy — Ellen G. White',
+  'gospel-of-thomas.txt':                                        'The Gospel of Thomas',
+  'locke-two-treatises-of-government.txt':                       'Two Treatises of Government — John Locke',
+  'quran-english-translation-clearquran-edition-allah.pdf':      'The Quran (ClearQuran)',
+  'mill-on-liberty.txt':                                         'On Liberty — John Stuart Mill',
+  'paine-common-sense.txt':                                      'Common Sense — Thomas Paine',
+  'patrick-henry-give-me-liberty.txt':                           'Give Me Liberty or Give Me Death — Patrick Henry',
+  'plato-republic.txt':                                          'The Republic — Plato',
+};
+
+function friendlyName(filename) {
+  return SOURCE_ALIASES[filename] || filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+}
 
 // Simple key auth — set ADMIN_KEY in .env
 function auth(req, res, next) {
@@ -24,45 +42,50 @@ router.use(auth);
 // ─── Stats overview ───────────────────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
   const conceptMap = getConceptMap();
-  const sources = getSources();
+  const meta = getMeta();
 
   let embeddingCount = 0;
-  let totalChunks = 0;
+  let sessionCount = 0;
+  let chatLogCount = 0;
+  let hotChunkCount = 0;
 
   if (supabase) {
-    const [emb, total] = await Promise.all([
+    const [emb, sess, logs, hot] = await Promise.all([
       supabase.from('chunks').select('id', { count: 'exact', head: true }).not('embedding', 'is', null),
-      supabase.from('chunks').select('id', { count: 'exact', head: true }),
+      supabase.from('sessions').select('id', { count: 'exact', head: true }),
+      supabase.from('chat_logs').select('id', { count: 'exact', head: true }),
+      supabase.from('chunk_analytics').select('id', { count: 'exact', head: true }).eq('sonnet_queued', true).eq('sonnet_done', false),
     ]);
     embeddingCount = emb.count || 0;
-    totalChunks    = total.count || 0;
+    sessionCount   = sess.count || 0;
+    chatLogCount   = logs.count || 0;
+    hotChunkCount  = hot.count || 0;
   }
 
   res.json({
-    concepts:        conceptMap?.concepts?.length || 0,
-    conceptList:     (conceptMap?.concepts || []).map(c => ({ name: c.name, description: c.description, traditions: c.traditions })),
-    traditions:      conceptMap?.traditions?.length || 0,
-    traditionList:   (conceptMap?.traditions || []).map(t => ({ name: t.name, coreBeliefs: t.coreBeliefs })),
-    coreThemes:      conceptMap?.coreThemes || [],
-    sources:         sources,
-    embeddings:      embeddingCount,
-    totalChunks,
+    chunks:         getChunkCount(),
+    concepts:       conceptMap?.concepts?.length || 0,
+    traditions:     conceptMap?.traditions?.length || 0,
+    traditionsList: conceptMap?.traditions || [],
+    builtAt:        meta?.builtAt || null,
+    sources:        meta?.sources || [],
+    embeddings:     embeddingCount,
+    sessions:       sessionCount,
+    chatLogs:       chatLogCount,
+    sonnetQueued:   hotChunkCount,
   });
 });
 
-// ─── Source breakdown — from knowledge-meta.json ───────────────────────────────
+// ─── Source breakdown ─────────────────────────────────────────────────────────
 router.get('/sources', (req, res) => {
-  const { sourceStats } = getMeta();
-  if (!sourceStats || sourceStats.length === 0) return res.json([]);
-
-  const results = sourceStats.map(s => ({
-    source:   friendlySourceName(s.filename),
-    filename: s.filename,
-    total:    s.total,
-    analyzed: s.analyzed,
-  }));
-
-  res.json(results.sort((a, b) => b.total - a.total));
+  const { chunks } = getKnowledgeBase();
+  const map = {};
+  for (const chunk of chunks) {
+    if (!map[chunk.source]) map[chunk.source] = { filename: chunk.source, source: friendlyName(chunk.source), total: 0, analyzed: 0 };
+    map[chunk.source].total++;
+    if (chunk.meta?.summary) map[chunk.source].analyzed++;
+  }
+  res.json(Object.values(map).sort((a, b) => b.total - a.total));
 });
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
@@ -89,7 +112,7 @@ router.post('/build-embeddings', async (req, res) => {
   embeddingRunning = true;
   res.json({ ok: true, message: 'Embedding build started' });
   try {
-    const count = await buildEmbeddings(({ done, total }) => {
+    const count = await buildEmbeddings((done, total) => {
       console.log(`[embeddings] ${done}/${total}`);
     });
     console.log(`[embeddings] Done — ${count} embeddings built`);
@@ -109,20 +132,6 @@ router.post('/build-concept-map', (req, res) => {
   const proc = spawn('node', ['rebuild-concepts.js'], { cwd: serverDir });
   proc.on('exit', () => { conceptMapRunning = false; });
   res.json({ ok: true, message: 'Concept map rebuild started' });
-});
-
-// ─── Full knowledge rebuild ────────────────────────────────────────────────────
-let fullBuildRunning = false;
-router.post('/build', (req, res) => {
-  if (fullBuildRunning) return res.json({ ok: false, message: 'Already running' });
-  fullBuildRunning = true;
-  const serverDir = path.join(__dirname, '..');
-  const proc = spawn('node', ['build-knowledge.js'], { cwd: serverDir, env: { ...process.env } });
-  proc.on('exit', () => {
-    fullBuildRunning = false;
-    loadKnowledgeBase().then(() => console.log('[admin] Knowledge base reloaded after build'));
-  });
-  res.json({ ok: true, message: 'Full knowledge rebuild started' });
 });
 
 export default router;

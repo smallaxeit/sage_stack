@@ -25,8 +25,7 @@ try {
   }
 } catch {}
 
-const KB_FILE   = path.join(__dirname, 'knowledge-base.json');
-const META_FILE = path.join(__dirname, 'knowledge-meta.json');
+const KB_FILE = path.join(__dirname, 'knowledge-base.json');
 
 const CONCEPT_MAP_PROMPT = (conceptData) => `You are a scholar of comparative theology and philosophy synthesizing a deep knowledge map from multiple sacred and philosophical texts.
 
@@ -156,18 +155,6 @@ async function main() {
 
   await fs.writeFile(KB_FILE, JSON.stringify(kb));
   console.log('\n✓ knowledge-base.json updated with concept map.');
-
-  // Also patch knowledge-meta.json so the server picks it up on next restart
-  try {
-    const metaRaw = await fs.readFile(META_FILE, 'utf-8');
-    const meta = JSON.parse(metaRaw);
-    meta.conceptMap = conceptMap;
-    meta.totalConcepts = conceptMap.concepts?.length || 0;
-    await fs.writeFile(META_FILE, JSON.stringify(meta, null, 2));
-    console.log('✓ knowledge-meta.json updated.');
-  } catch (err) {
-    console.warn('Could not update knowledge-meta.json:', err.message);
-  }
   console.log('Restart the server to load the new concepts.');
 }
 

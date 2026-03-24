@@ -134,15 +134,12 @@ body {
 .admin-stat-label { font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.1rem; }
 .admin-stat-sub { font-size: 0.65rem; color: var(--text-muted); margin-top: 0.1rem; }
 .admin-meta { font-size: 0.7rem; color: var(--text-secondary); margin: 0; }
+.admin-traditions-list { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.25rem; }
+.admin-tradition-chip { font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 9999px; background: var(--chip-bg); color: var(--chip-text); border: 1px solid var(--chip-border); }
 .admin-progress-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); }
 .admin-bar-track { height: 4px; border-radius: 9999px; background: var(--progress-track); overflow: hidden; }
 .admin-bar-fill { height: 100%; border-radius: 9999px; background: var(--progress-fill); transition: width 0.5s ease; }
 .admin-empty { font-size: 0.75rem; color: var(--text-muted); font-style: italic; }
-.admin-tag-list { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.25rem 0; }
-.admin-tag { font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 9999px; background: var(--chip-bg); color: var(--chip-text); }
-.admin-concept-row { width: 100%; padding: 0.45rem 0; border-bottom: 1px solid var(--border); }
-.admin-concept-name { font-size: 0.78rem; font-weight: 600; color: var(--text-primary); display: block; }
-.admin-concept-desc { font-size: 0.72rem; color: var(--text-secondary); display: block; margin-top: 0.1rem; }
 .admin-source-row { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
 .admin-source-name { font-size: 0.8rem; font-weight: 500; color: var(--text-primary); }
 .admin-source-meta { display: flex; gap: 1rem; font-size: 0.7rem; color: var(--text-secondary); }
