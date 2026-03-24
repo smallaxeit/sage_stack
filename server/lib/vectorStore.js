@@ -1,106 +1,53 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { supabase } from './supabase.js';
 import { searchByEmbedding } from './embeddings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const KB_FILE = path.join(__dirname, '../knowledge-base.json');
+const META_FILE = path.join(__dirname, '../knowledge-meta.json'); // tiny — sources list only
 
-let chunks = [];
 let conceptMap = null;
-let meta = null;
+let knownSources = [];
+let sourceStats = [];
+let initialized = false;
 
-// ─── Cosine similarity ────────────────────────────────────────────────────────
-
-function cosineSimilarity(a, b) {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  let dot = 0, normA = 0, normB = 0;
-  for (const k of keys) {
-    const va = a[k] || 0;
-    const vb = b[k] || 0;
-    dot += va * vb;
-    normA += va * va;
-    normB += vb * vb;
-  }
-  if (normA === 0 || normB === 0) return 0;
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-// ─── Query vector (TF-IDF style) ──────────────────────────────────────────────
-
-function tokenize(text) {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2);
-}
-
-function queryVector(text) {
-  const tokens = tokenize(text);
-  const tf = {};
-  for (const t of tokens) tf[t] = (tf[t] || 0) + 1;
-  return tf;
-}
-
-// ─── Load ─────────────────────────────────────────────────────────────────────
+// ─── Initialize ───────────────────────────────────────────────────────────────
 
 export async function loadKnowledgeBase() {
+  // 1. Load sources + concept map from local meta file (tiny, fast — no chunks)
   try {
-    const raw = await fs.readFile(KB_FILE, 'utf-8');
-    const kb = JSON.parse(raw);
-    chunks = kb.chunks || [];
-    conceptMap = kb.conceptMap || null;
-    meta = kb.meta || null;
-    console.log(`Knowledge base loaded: ${chunks.length} chunks, ${conceptMap?.concepts?.length || 0} concepts`);
-    console.log(`Built at: ${meta?.builtAt || 'unknown'}`);
-    return true;
-  } catch (err) {
-    console.warn('No knowledge-base.json found. Run: npm run build:knowledge');
-    return false;
+    const raw = await fs.readFile(META_FILE, 'utf-8');
+    const meta = JSON.parse(raw);
+    knownSources = meta.sources || [];
+    sourceStats  = meta.sourceStats || [];
+    if (meta.conceptMap) conceptMap = meta.conceptMap;
+  } catch {
+    // No meta file yet — will be written after first build
   }
+
+  const totalConcepts = conceptMap?.concepts?.length || 0;
+  console.log(`Knowledge base: ${knownSources.length} sources, ${totalConcepts} concepts`);
+  initialized = knownSources.length > 0 || totalConcepts > 0;
+  return initialized;
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export async function search(query, topK = 10) {
-  // Try pgvector semantic search first
-  const embeddingResults = await searchByEmbedding(query, topK);
-  if (embeddingResults && embeddingResults.length > 0) {
-    console.log(`[search] pgvector — ${embeddingResults.length} results`);
-    return embeddingResults;
+  const results = await searchByEmbedding(query, topK);
+  if (results && results.length > 0) {
+    console.log(`[search] pgvector — ${results.length} results`);
+    return results;
   }
-
-  // Fall back to TF-IDF
-  console.log(`[search] TF-IDF fallback`);
-  if (chunks.length === 0) return [];
-
-  const qv = queryVector(query);
-  const queryTokens = new Set(tokenize(query));
-  const scored = chunks.map(chunk => {
-    let score = cosineSimilarity(qv, chunk.vector || {});
-    const concepts = chunk.meta?.concepts || [];
-    for (const concept of concepts) {
-      if (queryTokens.has(concept.toLowerCase())) score += 0.15;
-    }
-    return { ...chunk, score };
-  });
-
-  return scored
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
-    .filter(r => r.score > 0)
-    .map(r => ({
-      source: r.source,
-      chunk_index: r.id,
-      text: r.text,
-      concepts: r.meta?.concepts || [],
-      themes: r.meta?.themes || [],
-      scriptureRefs: r.meta?.scriptureRefs || [],
-      summary: r.meta?.summary || '',
-    }));
+  console.warn('[search] pgvector returned no results');
+  return [];
 }
 
 // ─── Getters ──────────────────────────────────────────────────────────────────
 
-export function getConceptMap() { return conceptMap; }
-export function getMeta() { return meta; }
-export function getChunkCount() { return chunks.length; }
-export function getKnowledgeBase() { return { chunks, conceptMap, meta }; }
-export function isReady() { return chunks.length > 0; }
+export function getConceptMap()    { return conceptMap; }
+export function getSources()       { return knownSources; }
+export function isReady()          { return initialized; }
+export function getMeta()          { return { totalConcepts: conceptMap?.concepts?.length || 0, sources: knownSources, sourceStats }; }
+export function getKnowledgeBase() { return { conceptMap, sources: knownSources }; }

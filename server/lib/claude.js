@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { search, getConceptMap, getKnowledgeBase } from './vectorStore.js';
+import { search, getConceptMap, getSources } from './vectorStore.js';
 
 let _client = null;
 function getClient() {
@@ -17,6 +17,7 @@ const SOURCE_NAMES = {
   'en163-1.pdf':                                               'The Great Controversy — Ellen G. White (Seventh-day Adventist)',
   'locke-two-treatises-of-government.txt':                     'Two Treatises of Government — John Locke',
   'gospel-of-thomas.txt':                                      'The Gospel of Thomas (Nag Hammadi, Lambdin translation)',
+  'book_of_mormon_missionary_english.pdf':                     'The Book of Mormon',
   'plato-republic.txt':                                        'The Republic — Plato',
   'plato-phaedo.txt':                                          'Phaedo — Plato',
   'plato-meno.txt':                                            'Meno — Plato',
@@ -100,11 +101,7 @@ WELCOME ALL QUESTIONS:
 - Objective discourse on ethics, religion, politics, philosophy, and history is not only allowed — it's the point
 
 LOADED SOURCE TEXTS:
-${(() => {
-  const { chunks } = getKnowledgeBase();
-  const sources = [...new Set((chunks || []).map(c => c.source))];
-  return sources.map(s => `• ${friendlySourceName(s)}`).join('\n');
-})()}
+${getSources().map(s => `• ${friendlySourceName(s)}`).join('\n')}
 
 You have deep knowledge of all the sources listed above. The passages below are the most relevant excerpts for this specific question — use them as your primary reference, but do not tell the student a source is unavailable if it appears in the list above. If a specific passage isn't in the context window, draw on your broader knowledge of that text.
 
