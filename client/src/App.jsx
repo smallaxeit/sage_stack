@@ -48,15 +48,15 @@ export default function App() {
         .then(r => r.json())
         .then(p => {
           setBuildProgress(p);
-          const active = p.status === 'running' || p.status === 'starting';
-          setBuilding(active);
-          if (p.status === 'done') {
+          if (p.status === 'running' || p.status === 'starting') {
+            setBuilding(true);
+            pollRef.current = setTimeout(poll, 3000);
+          } else if (p.status === 'done') {
+            setBuilding(false);
             fetch('/api/status').then(r => r.json()).then(setStatus).catch(() => {});
           }
-          // Always keep polling — fast when building, slow when idle
-          pollRef.current = setTimeout(poll, active ? 3000 : 8000);
         })
-        .catch(() => { pollRef.current = setTimeout(poll, 8000); });
+        .catch(() => {});
     }
     poll();
     return () => clearTimeout(pollRef.current);
@@ -107,8 +107,6 @@ export default function App() {
               <span>
                 {buildProgress.phase === 'concept-map'
                   ? 'Building concept map…'
-                  : buildProgress.phase === 'embeddings'
-                  ? `Embedding — ${buildProgress.current?.toLocaleString()} / ${buildProgress.total?.toLocaleString()}`
                   : `Analyzing sources — ${buildProgress.current?.toLocaleString()} / ${buildProgress.total?.toLocaleString()} chunks`}
               </span>
               <span>
@@ -126,16 +124,6 @@ export default function App() {
                 style={{ width: `${buildProgress.pct || 0}%`, background: 'var(--progress-fill)' }}
               />
             </div>
-          </div>
-        )}
-        {buildProgress?.status === 'done' && (
-          <div className="mt-2 text-xs" style={{ color: '#3fb950' }}>
-            ✓ Knowledge base updated — {buildProgress.concepts ?? 0} concepts across {buildProgress.sources ?? 0} sources
-          </div>
-        )}
-        {buildProgress?.status === 'error' && (
-          <div className="mt-2 text-xs" style={{ color: '#f87171' }}>
-            ✕ Build failed: {buildProgress.message}
           </div>
         )}
 

@@ -14,7 +14,7 @@ SageStack is built on the **Socratic method** — the oldest and most effective 
 
 Rather than lecturing, SageStack:
 - **Answers directly** — no gatekeeping, no hedging. You get a real, substantive answer grounded in the source texts.
-- **Then asks back** — every response ends with genuine questions designed to open the next layer of thinking and guide you toward your own conclusions.
+- **Then asks back** — every response ends with genuine Socratic questions designed to open the next layer of thinking and guide you toward your own conclusions.
 - **Meets you where you are** — whether you're a theology student, a curious skeptic, someone raised in the faith, or someone who just wants to understand what all this is about. Ask in whatever voice comes naturally.
 
 The goal isn't to tell you what to believe. It's to help you think more clearly about what you already believe — and what you don't.
@@ -25,31 +25,31 @@ The goal isn't to tell you what to believe. It's to help you think more clearly 
 
 SageStack draws from the world's major religious and philosophical traditions. The knowledge base is designed to grow.
 
-### Religious texts — loaded
+### Currently loaded (11 sources)
+
+**Religious texts**
 | Text | Tradition |
 |------|-----------|
-| The Holy Bible — King James Version | Christianity |
-| Ethiopian Orthodox Bible | Orthodox Christianity (includes deuterocanonical & Enochic texts) |
-| Quran | Islam |
-| Book of Mormon | Latter-day Saints |
-| Gospel of Thomas | Gnostic / Early Christian |
+| The Holy Bible (KJV) | Christianity |
+| Ethiopian Orthodox Bible | Orthodox / Enochic Christianity |
+| The Quran (ClearQuran) | Islam |
+| The Book of Mormon | Latter-day Saint |
+| The Gospel of Thomas | Gnostic Christianity |
 | The Great Controversy — Ellen G. White | Seventh-day Adventist |
 
-### Philosophy & Political Thought — loaded
+**Philosophy & Political Thought**
 | Text | School |
 |------|--------|
 | Plato — *The Republic* | Ancient / Classical |
-| John Locke — *Two Treatises of Government* | Social Contract |
-| John Stuart Mill — *On Liberty* | Liberalism |
-| Thomas Paine — *Common Sense* | American Founding |
+| John Locke — *Two Treatises of Government* | Social Contract / Natural Rights |
+| John Stuart Mill — *On Liberty* | Classical Liberalism |
+| Thomas Paine — *Common Sense* | American Founding / Natural Rights |
 | Patrick Henry — *Give Me Liberty or Give Me Death* | American Founding |
 
-Topics span theology, comparative religion, ethics, political philosophy, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from the Nag Hammadi scrolls to natural law.
+### Staged for next build (`/source/library/`)
+30+ texts ready to load — Aristotle, Aquinas, Nietzsche, Hobbes, Rousseau, Kant, Descartes, The Federalist Papers, and more. See `READING_LIST.md` for the full list.
 
-### Staged — ready to add
-30+ texts are downloaded and waiting in `/source/library/` including Aristotle, Marcus Aurelius, Aquinas, Hobbes, Rousseau, Kant, Hume, Nietzsche, Descartes, the Federalist Papers, Jefferson, Madison, Franklin, and more.
-
-See `READING_LIST.md` for the full source list with load status and staging queue.
+Topics span theology, comparative religion, ethics, philosophy of religion, and the intellectual history that connects them — from the Sermon on the Mount to the social contract, from ancient Athens to the American founding.
 
 ---
 
@@ -63,13 +63,13 @@ Source texts are pre-processed before the app runs. Each document is:
 4. Embedded with Voyage AI (voyage-3) for semantic vector search
 5. Synced to Supabase for persistence
 
-This happens once per source. Results are cached — adding new texts only processes new material.
+This happens once per source. Results are cached — adding new texts only processes new material. The reading list (`source/READING_LIST.md`) is auto-updated after each build.
 
 ### Chat
-When you ask a question, the most semantically relevant passages from across all source texts are retrieved via pgvector and used to ground the response. The AI teaches from the loaded texts and knows which sources are available — it won't claim a source is missing just because it didn't surface in a given search.
+When you ask a question, the most semantically relevant passages from across all source texts are retrieved via pgvector and used to ground the response. The AI teaches strictly from the loaded texts — if it's not in the source material, it says so plainly.
 
 ### Analytics (background)
-Every chat interaction is logged to Supabase — subjects, themes, which chunks were retrieved. Frequently-queried chunks are automatically flagged for deeper re-analysis. All of this happens silently in the background and is accessible directly via the Supabase dashboard.
+Every chat interaction is logged to Supabase — subjects, themes, which chunks were retrieved. Frequently-queried chunks are automatically flagged for deeper Sonnet re-analysis. All of this happens silently in the background and is accessible directly via the Supabase dashboard.
 
 ---
 
@@ -79,10 +79,9 @@ Every chat interaction is logged to Supabase — subjects, themes, which chunks 
 - **Quick / Deep mode** — concise accessible answers or full scholarly treatment
 - **Explore chips** — clickable concept suggestions after each response
 - **Source citations** — see exactly which texts were used to generate each answer
-- **Friendly source names** — human-readable titles throughout, not filenames
 - **Dark / Light theme** — persists across sessions
 - **Admin panel** — manage builds, view source status, trigger embeddings and concept map rebuilds
-- **Expandable knowledge base** — drop in new source files, rebuild, done
+- **Expandable knowledge base** — drop in new PDFs, rebuild, reading list updates automatically
 
 ---
 
@@ -148,21 +147,20 @@ Open [http://localhost:5199](http://localhost:5199)
 ├── server/                        # Node/Express backend
 │   ├── build-knowledge.js         # Pre-build pipeline
 │   ├── rebuild-concepts.js        # Standalone concept map rebuild
-│   ├── sync-and-embed.js          # Standalone Supabase sync + Voyage embeddings
 │   ├── supabase-schema.sql        # Core DB schema
 │   ├── supabase-analytics.sql     # Analytics tables, functions, views
 │   ├── supabase-vector-search.sql # pgvector match_chunks function
 │   ├── lib/
 │   │   ├── claude.js              # AI integration + RAG + system prompt
 │   │   ├── embeddings.js          # Voyage AI embeddings + pgvector search
-│   │   ├── supabase.js            # Supabase lazy client
+│   │   ├── supabase.js            # Supabase lazy clients
 │   │   ├── vectorStore.js         # Search (pgvector → TF-IDF fallback)
 │   │   └── parser.js              # PDF and text parsing
 │   └── routes/
 │       ├── chat.js                # Chat API + session management
 │       └── admin.js               # Admin API routes
-└── source/                        # Drop source files here (PDF or TXT)
-    └── library/                   # Staging area — move files to source/ when ready to build
+├── READING_LIST.md                # Tracked source list with load status
+└── source/                        # Drop source PDFs/TXTs here
 ```
 
 ---
@@ -170,8 +168,8 @@ Open [http://localhost:5199](http://localhost:5199)
 ## Notes
 
 - `.env` is gitignored — never commit API keys
-- `knowledge-cache.json` is gitignored — if lost, run `node server/scripts/rebuild-cache-from-supabase.js` to restore from Supabase. Never re-analyze from scratch.
-- Source files are gitignored — store separately
+- `knowledge-base.json` and `knowledge-cache.json` are gitignored — **always restore cache from Supabase before rebuilding** (see build pipeline notes)
+- If build crashes, restart it — cache means re-runs only process new chunks, never from scratch
+- Source PDFs are gitignored — store separately (books.google.com for public domain texts)
 - Sessions persist in Supabase — survive server restarts
 - Analytics log silently to Supabase — query via dashboard when needed
-- When adding a new source file, add a friendly name entry to `SOURCE_NAMES` in `server/lib/claude.js`

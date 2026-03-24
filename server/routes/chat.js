@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import path from 'path';
 import { chatStream } from '../lib/claude.js';
-import { isReady, getMeta, getConceptMap, getSources } from '../lib/vectorStore.js';
+import { isReady, getChunkCount, getMeta, getConceptMap } from '../lib/vectorStore.js';
 import supabase from '../lib/supabase.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,9 +44,11 @@ router.get('/status', (req, res) => {
   const conceptMap = getConceptMap();
   res.json({
     ready: isReady(),
+    chunks: getChunkCount(),
     concepts: conceptMap?.concepts?.length || 0,
     coreThemes: conceptMap?.coreThemes || [],
-    sources: getSources(),
+    builtAt: meta?.builtAt || null,
+    sources: meta?.sources || [],
   });
 });
 
