@@ -63,6 +63,20 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 
 ---
 
+## Civil Rights & Nonviolent Ethics
+
+*Gandhi — partial public domain (pre-1928 works free; autobiography serialized 1925–1929)*
+- [ ] Mahatma Gandhi — *Hind Swaraj* (Indian Home Rule, 1909) — [gutenberg.org](https://www.gutenberg.org/ebooks/75371) — public domain
+- [ ] Mahatma Gandhi — *The Story of My Experiments with Truth* (autobiography, 1927) — [gutenberg.org](https://www.gutenberg.org/ebooks/58197) — public domain
+- [ ] Mahatma Gandhi — *Ethical Religion* — [gutenberg.org](https://www.gutenberg.org/ebooks/19519) — public domain
+
+*MLK — still under copyright (estate managed). Best sources: archive.org or The King Center*
+- [ ] Martin Luther King Jr. — *Letter from Birmingham Jail* (1963) — [archive.org](https://archive.org/search?query=letter+from+birmingham+jail+king) — manual download
+- [ ] Martin Luther King Jr. — *Stride Toward Freedom* (1958) — [archive.org](https://archive.org/search?query=stride+toward+freedom+king) — manual download
+- [ ] Martin Luther King Jr. — *Strength to Love* (sermons, 1963) — [archive.org](https://archive.org/search?query=strength+to+love+king) — manual download
+
+---
+
 ## Objectivism — Ayn Rand
 *20th century — not public domain. Manual download from archive.org*
 - [ ] Ayn Rand — *The Virtue of Selfishness* — [archive.org](https://archive.org/search?query=virtue+of+selfishness+rand)
