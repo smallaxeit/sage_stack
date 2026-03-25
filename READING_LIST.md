@@ -65,6 +65,10 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 
 ## Civil Rights & Nonviolent Ethics
 
+*Thoreau — public domain (died 1862)*
+- [ ] Henry David Thoreau — *Civil Disobedience* (1849) — [gutenberg.org](https://www.gutenberg.org/ebooks/71) — direct influence on Gandhi and MLK
+- [ ] Henry David Thoreau — *Walden* (1854) — [gutenberg.org](https://www.gutenberg.org/ebooks/205) — philosophy of conscience and self-reliance
+
 *Gandhi — partial public domain (pre-1928 works free; autobiography serialized 1925–1929)*
 - [ ] Mahatma Gandhi — *Hind Swaraj* (Indian Home Rule, 1909) — [gutenberg.org](https://www.gutenberg.org/ebooks/75371) — public domain
 - [ ] Mahatma Gandhi — *The Story of My Experiments with Truth* (autobiography, 1927) — [gutenberg.org](https://www.gutenberg.org/ebooks/58197) — public domain
