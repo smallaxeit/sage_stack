@@ -69,6 +69,7 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 - [x] John Keats — *Poems* (incl. "Ode on a Grecian Urn", "Ode to a Nightingale") — `keats-poems.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/23)
 - [x] Lord Byron — *Don Juan* — `byron-don-juan.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/21700)
 - [x] Alfred Lord Tennyson — *Poems* (incl. "Ulysses", "In Memoriam") — `tennyson-poems.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/576)
+- [ ] Dylan Thomas — *Collected Poems* (incl. "Do Not Go Gentle into That Good Night") — still under US copyright (died 1953) — [archive.org](https://archive.org/search?query=dylan+thomas+collected+poems) — manual download
 
 ---
 
