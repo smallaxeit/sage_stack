@@ -63,6 +63,15 @@ Files staged in `/source/library/` — move to `/source/` when ready to build.
 
 ---
 
+## Poetry — Dead Poets Society Canon
+*Public domain — downloaded to `/source/library/`*
+- [x] Walt Whitman — *Leaves of Grass* (incl. "Song of Myself", "O Captain! My Captain!") — `whitman-leaves-of-grass.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/1322)
+- [x] John Keats — *Poems* (incl. "Ode on a Grecian Urn", "Ode to a Nightingale") — `keats-poems.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/23)
+- [x] Lord Byron — *Don Juan* — `byron-don-juan.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/21700)
+- [x] Alfred Lord Tennyson — *Poems* (incl. "Ulysses", "In Memoriam") — `tennyson-poems.txt` — [gutenberg.org](https://www.gutenberg.org/ebooks/576)
+
+---
+
 ## Civil Rights & Nonviolent Ethics
 
 *Thoreau — public domain (died 1862)*

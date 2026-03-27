@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase.js';
 import { buildEmbeddings } from '../lib/embeddings.js';
 import { getChunkCount, getMeta, getConceptMap, getKnowledgeBase } from '../lib/vectorStore.js';
+import { friendlySourceName } from '../lib/claude.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,24 +10,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
-// ─── Friendly source names ─────────────────────────────────────────────────────
-const SOURCE_ALIASES = {
-  'EthiopianOrthodoxBible.pdf':                                  'Ethiopian Orthodox Bible',
-  'The Holy Bible (KJV).pdf':                                    'The Holy Bible (KJV)',
-  'book_of_mormon_missionary_english.pdf':                       'The Book of Mormon',
-  'en163-1.pdf':                                                 'The Great Controversy — Ellen G. White',
-  'gospel-of-thomas.txt':                                        'The Gospel of Thomas',
-  'locke-two-treatises-of-government.txt':                       'Two Treatises of Government — John Locke',
-  'quran-english-translation-clearquran-edition-allah.pdf':      'The Quran (ClearQuran)',
-  'mill-on-liberty.txt':                                         'On Liberty — John Stuart Mill',
-  'paine-common-sense.txt':                                      'Common Sense — Thomas Paine',
-  'patrick-henry-give-me-liberty.txt':                           'Give Me Liberty or Give Me Death — Patrick Henry',
-  'plato-republic.txt':                                          'The Republic — Plato',
-};
-
-function friendlyName(filename) {
-  return SOURCE_ALIASES[filename] || filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-}
+const friendlyName = friendlySourceName;
 
 // Simple key auth — set ADMIN_KEY in .env
 function auth(req, res, next) {

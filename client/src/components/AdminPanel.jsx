@@ -141,7 +141,7 @@ export default function AdminPanel({ open, onClose, buildProgress }) {
                   const pct = Math.round(s.analyzed / s.total * 100);
                   return (
                     <div key={s.source} className="admin-source-row">
-                      <div className="admin-source-name">{s.source.replace(/\.(pdf|txt)$/i, '')}</div>
+                      <div className="admin-source-name">{s.source}</div>
                       <div className="admin-source-meta">
                         <span className={pct === 100 ? 'text-emerald-400' : 'text-amber-400'}>
                           {pct === 100 ? '✓ fully analyzed' : `${pct}% analyzed`}
