@@ -16,13 +16,15 @@ export default function Chat({ ready }) {
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
   const isStreamingRef = useRef(false);
+  const forceScrollRef = useRef(false);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distanceFromBottom < 120) {
+    if (forceScrollRef.current || distanceFromBottom < 120) {
       bottomRef.current?.scrollIntoView({ behavior: isStreamingRef.current ? 'instant' : 'smooth' });
+      forceScrollRef.current = false;
     }
   }, [messages, loading]);
 
@@ -31,6 +33,7 @@ export default function Chat({ ready }) {
     if (!text || loading || !ready) return;
 
     setInput('');
+    forceScrollRef.current = true;
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setLoading(true);
     isStreamingRef.current = false;
