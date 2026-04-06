@@ -1,0 +1,20 @@
+# Don't copy these into the Docker image.
+# Same idea as .gitignore — keeps the image small
+# and prevents secrets from leaking in.
+
+node_modules
+client/node_modules
+server/node_modules
+client/dist
+
+# Never bake secrets into the image.
+# Env vars are injected at runtime by the platform.
+**/.env
+server/.env
+
+# Unnecessary noise
+*.log
+.git
+.gitignore
+images/
+source/
