@@ -135,7 +135,7 @@ export async function chat(messages, mode = 'deep') {
   const systemPrompt = buildSystemPrompt(mode) + contextStr;
 
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     max_tokens: 4096,
     system: systemPrompt,
     messages,
@@ -151,7 +151,7 @@ export async function chatStream(messages, onChunk, mode = 'deep') {
   const systemPrompt = buildSystemPrompt(mode) + contextStr;
 
   const stream = await getClient().messages.stream({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     max_tokens: 4096,
     system: systemPrompt,
     messages,
