@@ -39,19 +39,40 @@ export const DEFAULT_RULES = `HOW TO ANSWER:
 - Correct mistaken premises factually, without moralising.
 - Accept questions in any tone — casual, blunt, confused, skeptical.
 - If the sources don't address the question, say so plainly rather than guessing.
-
-CITING PAGES:
-- When a passage you use shows a page number, cite it inline as [p.419] —
-  square brackets, lowercase p, a dot, then the page number from the passage
-  header. The reader's interface turns that exact form into a link that opens
-  the page, so the format matters.
-- Cite the page from the passage header, not the printed label, when they differ.
-- Cite at the point the fact appears, not in a list at the end.
-- Never invent a page number. If a passage carries none, cite it by name instead.`;
+`;
 
 export const DEFAULT_GROUNDING =
   'You draw ONLY from the source passages provided in context below. ' +
   'If the sources do not address the question, say so plainly.';
+
+/**
+ * Page-citation instructions, chosen per request rather than baked into the
+ * prompt.
+ *
+ * This is not a nicety. Asking for [p.N] when the retrieved passages carry no
+ * page numbers makes the model invent them: it complies with the format because
+ * the format was requested, and produces citations that look authoritative,
+ * render as links, and point at nothing. Observed directly — a theology answer
+ * cited eleven pages from a corpus where not one chunk has a page number.
+ *
+ * So the instruction is only given when the context can actually support it,
+ * and its absence is stated explicitly rather than left silent.
+ */
+export const CITE_PAGES_RULES = `CITING PAGES:
+- The passages below carry page numbers in their headers. Cite them inline as
+  [p.419] — square brackets, lowercase p, a dot, then the number from the header.
+  The reader's interface turns that exact form into a link that opens the page,
+  so the format matters.
+- Use the page from the header, not the printed label, when the two differ.
+- Cite at the point the fact appears, not in a list at the end.
+- Only cite a page that appears in a passage header below. Never infer or
+  estimate one.`;
+
+export const NO_PAGES_RULES = `CITING SOURCES:
+- The passages below have NO page numbers. Do not write [p.N] or any page
+  citation — there is no page to point at and a reader would be sent nowhere.
+- Cite by the name of the text instead, and by its own internal divisions where
+  it has them (chapter, book, surah, verse), which are visible in the passage.`;
 
 export const DEFAULT_MODES = {
   quick: 'RESPONSE MODE: Quick. Concise, accessible 1–2 paragraph answer. Plain language, no jargon unless essential.',
@@ -235,12 +256,15 @@ export function renderConceptMap(profile, conceptMap) {
  * buildSystemPrompt() in claude.js — the shape is the same, the content is
  * entirely profile-driven.
  */
-export function buildSystemPrompt(profile, { mode = 'deep', conceptMap = null } = {}) {
+export function buildSystemPrompt(profile, { mode = 'deep', conceptMap = null, hasPages = false } = {}) {
   const modeInstruction = profile.modes[mode] || profile.modes.deep || DEFAULT_MODES.deep;
   return [
     profile.voice.trim(),
     renderConceptMap(profile, conceptMap),
     profile.rules.trim(),
+    // Chosen from what was actually retrieved, not from the subject profile —
+    // the same subject can hold paged and unpaged documents.
+    (hasPages ? CITE_PAGES_RULES : NO_PAGES_RULES),
     profile.grounding.trim(),
     modeInstruction.trim(),
   ].filter(Boolean).join('\n\n');
