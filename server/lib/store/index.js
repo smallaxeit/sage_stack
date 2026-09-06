@@ -61,6 +61,28 @@ export function assertValidSlug(slug) {
   return slug;
 }
 
+/**
+ * A stored session -> a listing row.
+ *
+ * The title is the first thing the user actually asked, which is what makes a
+ * list of past conversations scannable. Kept short enough for a sidebar and
+ * collapsed to one line, since a pasted multi-line question would otherwise
+ * blow out the row.
+ */
+export function summarizeSession(rec) {
+  const messages = Array.isArray(rec.messages) ? rec.messages : [];
+  const firstUser = messages.find(m => m.role === 'user');
+  const raw = String(firstUser?.content ?? '').replace(/\s+/g, ' ').trim();
+
+  return {
+    // The stored key is "<subject>::<uuid>"; callers want the bare id.
+    id: String(rec.id).split('::').slice(1).join('::') || String(rec.id),
+    title: raw.length > 90 ? raw.slice(0, 90) + '…' : (raw || 'Untitled'),
+    messageCount: messages.length,
+    updatedAt: rec.updatedAt ?? null,
+  };
+}
+
 /** Accepts Float32Array or number[]; returns a plain array, or null. */
 export function toVectorArray(vec) {
   if (vec == null) return null;

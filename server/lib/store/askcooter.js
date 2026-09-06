@@ -204,6 +204,7 @@ export function createAskCooterStore(opts = {}) {
 
     // Sessions never belong in a borrowed database.
     getSession:    async () => null,
+    listSessions:  async () => [],
     saveSession:   readOnly('saveSession'),
     deleteSession: readOnly('deleteSession'),
 

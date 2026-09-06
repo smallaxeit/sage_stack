@@ -263,6 +263,44 @@ export function explainChatError(err) {
   return detail;
 }
 
+// ─── Conversation history ─────────────────────────────────────────────────────
+// Sessions were already persisted per subject on every turn; they were just
+// never listable. Reloading one costs nothing — the messages are stored, so
+// re-opening a conversation makes no API call.
+
+router.get('/sessions', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const subject = await resolveSubject(req);
+    const sessions = rt.store.listSessions ? await rt.store.listSessions(subject) : [];
+    res.json({ subject, sessions });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/sessions/:sessionId', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const subject = await resolveSubject(req);
+    const messages = await rt.store.getSession(sessionKey(subject, req.params.sessionId));
+    if (!messages) return res.status(404).json({ error: 'No such conversation' });
+    res.json({ subject, sessionId: req.params.sessionId, messages });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/sessions/:sessionId', async (req, res) => {
+  try {
+    const subject = await resolveSubject(req);
+    const ok = await getRuntime().store.deleteSession(sessionKey(subject, req.params.sessionId));
+    res.json({ ok });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.delete('/chat/:sessionId', async (req, res) => {
   try {
     const subject = await resolveSubject(req);

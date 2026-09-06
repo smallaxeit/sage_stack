@@ -20,7 +20,7 @@
  */
 
 import pg from 'pg';
-import { assertValidSlug, normalizeChunk, toVectorArray } from './index.js';
+import { assertValidSlug, normalizeChunk, toVectorArray, summarizeSession } from './index.js';
 
 /** pgvector's text input format. Cast the parameter as ::vector at every use. */
 function toVectorLiteral(vec) {
@@ -374,6 +374,23 @@ export function createPostgresStore(opts = {}) {
         [String(id), JSON.stringify(messages)],
       );
       return true;
+    },
+
+    /** Every session belonging to one subject, newest first. */
+    async listSessions(subject) {
+      await ensureReady();
+      assertValidSlug(subject);
+      // The slug is validated to [a-z0-9_], so it cannot carry LIKE wildcards.
+      const r = await q(
+        `SELECT id, messages, updated_at FROM public.sagestack_sessions
+         WHERE id LIKE $1 ORDER BY updated_at DESC`,
+        [subject + '::%'],
+      );
+      return r.rows.map(row => summarizeSession({
+        id: row.id,
+        messages: row.messages,
+        updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+      }));
     },
 
     async deleteSession(id) {

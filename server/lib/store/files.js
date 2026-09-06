@@ -26,7 +26,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { assertValidSlug, normalizeChunk, toVectorArray } from './index.js';
+import { assertValidSlug, normalizeChunk, toVectorArray, summarizeSession } from './index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '../../..');
@@ -327,6 +327,31 @@ export function createFilesStore(opts = {}) {
       await fs.mkdir(sessionsDir, { recursive: true });
       await fs.writeFile(sessionFile(id), JSON.stringify({ id: String(id), messages, updatedAt: new Date().toISOString() }));
       return true;
+    },
+
+    /**
+     * Every session belonging to one subject, newest first.
+     *
+     * Filenames are sha1 hashes of the key, so the subject cannot be recovered
+     * from the name — the key is stored inside each file and filtered on read.
+     * Fine at this scale; if session counts ever grow, this wants an index.
+     */
+    async listSessions(subject) {
+      assertValidSlug(subject);
+      const prefix = subject + '::';
+      let names = [];
+      try { names = await fs.readdir(sessionsDir); } catch { return []; }
+
+      const out = [];
+      for (const name of names) {
+        if (!name.endsWith('.json')) continue;
+        try {
+          const rec = JSON.parse(await fs.readFile(path.join(sessionsDir, name), 'utf8'));
+          if (typeof rec.id !== 'string' || !rec.id.startsWith(prefix)) continue;
+          out.push(summarizeSession(rec));
+        } catch { /* unreadable or partial write — skip */ }
+      }
+      return out.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
     },
 
     async deleteSession(id) {

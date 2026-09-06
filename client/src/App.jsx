@@ -20,6 +20,12 @@ export default function App() {
   const [openDoc, setOpenDoc] = useState(null);
   const [sidebar, setSidebar] = useState(() => localStorage.getItem('ss-sidebar') !== 'closed');
   const [adminOpen, setAdminOpen] = useState(false);
+
+  // Conversation state lives here so switching to Knowledge and back does not
+  // destroy it — Chat unmounts on that switch.
+  const [messages, setMessages] = useState([]);
+  const [sessionId, setSessionId] = useState(null);
+  const [sessions, setSessions] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('ss-theme') || 'dark');
   const [docs, setDocs] = useState([]);
   const pollRef = useRef(null);
@@ -56,6 +62,43 @@ export default function App() {
   }, [subject]);
 
   useEffect(() => { refreshDocs(); }, [refreshDocs]);
+
+  const refreshSessions = useCallback(() => {
+    if (!subject) return;
+    fetch(`/api/sessions?subject=${encodeURIComponent(subject)}`)
+      .then(r => r.json())
+      .then(d => setSessions(d.sessions || []))
+      .catch(() => setSessions([]));
+  }, [subject]);
+
+  useEffect(() => { refreshSessions(); }, [refreshSessions]);
+
+  // A conversation belongs to one subject, so switching clears the open one.
+  useEffect(() => { setMessages([]); setSessionId(null); }, [subject]);
+
+  /** Reopen a stored conversation. Costs nothing — the messages are saved. */
+  const openSession = useCallback(async (id) => {
+    try {
+      const d = await fetch(
+        `/api/sessions/${encodeURIComponent(id)}?subject=${encodeURIComponent(subject)}`,
+      ).then(r => r.json());
+      if (d.messages) {
+        setMessages(d.messages);
+        setSessionId(id);
+        setView('chat');
+      }
+    } catch { /* gone; the list will catch up on the next refresh */ }
+  }, [subject]);
+
+  const deleteSession = useCallback(async (id, e) => {
+    e.stopPropagation();
+    await fetch(
+      `/api/sessions/${encodeURIComponent(id)}?subject=${encodeURIComponent(subject)}`,
+      { method: 'DELETE' },
+    ).catch(() => {});
+    if (id === sessionId) { setMessages([]); setSessionId(null); }
+    refreshSessions();
+  }, [subject, sessionId, refreshSessions]);
 
   useEffect(() => {
     function poll() {
@@ -168,6 +211,46 @@ export default function App() {
               ))}
             </div>
 
+            {sessions.length > 0 && (
+              <>
+                <div className="side-head" style={{ paddingTop: 14 }}>
+                  <span>Conversations</span>
+                  <button
+                    className="btn icon"
+                    style={{ fontSize: 11, padding: '2px 7px' }}
+                    onClick={() => { setMessages([]); setSessionId(null); setView('chat'); }}
+                  >New</button>
+                </div>
+                <div style={{ overflowY: 'auto', padding: '2px 8px 10px', maxHeight: '38vh' }}>
+                  {sessions.map(sess => (
+                    <button
+                      key={sess.id}
+                      className={`hist ${sess.id === sessionId ? 'active' : ''}`}
+                      onClick={() => openSession(sess.id)}
+                      title={sess.title}
+                      style={{ whiteSpace: 'normal', position: 'relative', paddingRight: 22 }}
+                    >
+                      <span style={{
+                        display: 'block', overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>{sess.title}</span>
+                      <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>
+                        {sess.messageCount} message{sess.messageCount === 1 ? '' : 's'}
+                      </span>
+                      <span
+                        onClick={(e) => deleteSession(sess.id, e)}
+                        title="Delete conversation"
+                        style={{
+                          position: 'absolute', right: 4, top: 6, fontSize: 12,
+                          color: 'var(--muted)', padding: '0 4px', cursor: 'pointer',
+                        }}
+                      >×</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
             {status?.errors?.length > 0 && (
               <div style={{ padding: '8px 12px', borderTop: '1px solid var(--line)', fontSize: 11.5, color: '#d29922' }}>
                 {status.errors.map(e => <div key={e.slug}>⚠ {e.slug}: {e.error}</div>)}
@@ -188,6 +271,11 @@ export default function App() {
               subjectName={current?.name}
               onOpenDoc={setOpenDoc}
               onOpenCite={openCitation}
+              messages={messages}
+              setMessages={setMessages}
+              sessionId={sessionId}
+              setSessionId={setSessionId}
+              onSaved={refreshSessions}
             />
           ) : (
             <KnowledgePanel

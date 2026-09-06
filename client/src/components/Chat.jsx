@@ -19,21 +19,25 @@ const DEFAULT_SUGGESTIONS = [
   'What topics can I ask about?',
 ];
 
-export default function Chat({ ready, subject, subjectName, suggestions, onOpenDoc, onOpenCite }) {
-  const [messages, setMessages] = useState([]);
+/**
+ * Conversation state (messages, sessionId) is OWNED BY App, not by this
+ * component. Chat unmounts whenever the user switches to the Knowledge view,
+ * and local state would be destroyed with it — which is exactly the bug where
+ * going to Knowledge and back lost the conversation.
+ */
+export default function Chat({
+  ready, subject, subjectName, suggestions, onOpenDoc, onOpenCite,
+  messages, setMessages, sessionId, setSessionId, onSaved,
+}) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState(() => localStorage.getItem('ss-mode') || 'deep');
-  const [sessionId, setSessionId] = useState(null);
 
   const logRef = useRef(null);
   const taRef = useRef(null);
   const abortRef = useRef(null);
 
   useEffect(() => { localStorage.setItem('ss-mode', mode); }, [mode]);
-
-  // A conversation belongs to one subject; switching starts a fresh one.
-  useEffect(() => { setMessages([]); setSessionId(null); }, [subject]);
 
   const scrollDown = useCallback(() => {
     const el = logRef.current;
@@ -116,6 +120,7 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
             });
           } else if (ev.done) {
             setSessionId(ev.sessionId);
+            onSaved?.();
             setMessages(m => {
               const next = [...m];
               next[next.length - 1] = {
@@ -157,11 +162,9 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
     }
   }
 
-  async function newChat() {
-    if (sessionId) {
-      await fetch(`/api/chat/${sessionId}?subject=${encodeURIComponent(subject || '')}`, { method: 'DELETE' })
-        .catch(() => {});
-    }
+  function newChat() {
+    // Deliberately does NOT delete the current conversation — it stays in
+    // history. Starting fresh and discarding are different intentions.
     setMessages([]);
     setSessionId(null);
     taRef.current?.focus();
