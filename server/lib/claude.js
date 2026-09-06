@@ -1,173 +1,171 @@
+/**
+ * claude.js — retrieval-augmented answering, per subject.
+ *
+ * Everything subject-specific now comes from a profile (see subjects.js): the
+ * voice, the response modes, the concept map, topK, source aliases, and the
+ * model. Nothing theology-shaped remains hardcoded here.
+ *
+ * Dependencies are injected rather than imported, so a teacher can be built
+ * against fakes in tests and against the real store/embedder in the server:
+ *
+ *   const teacher = createTeacher({ profile, store, embedder });
+ *   await teacher.chatStream(messages, onChunk, { mode: 'deep' });
+ *
+ * Retrieval is subject-scoped at every step — the store is asked for
+ * profile.slug and nothing else, which is the tenancy guarantee from §10.
+ */
+
 import Anthropic from '@anthropic-ai/sdk';
-import { search, getConceptMap } from './vectorStore.js';
-
-const SOURCE_ALIASES = {
-  'EthiopianOrthodoxBible.pdf':                                 'Ethiopian Orthodox Bible',
-  'The Holy Bible (KJV).pdf':                                   'The Holy Bible (KJV)',
-  'book_of_mormon_missionary_english.pdf':                      'The Book of Mormon',
-  'en163-1.pdf':                                                'The Great Controversy — Ellen G. White',
-  'gospel-of-thomas.txt':                                       'The Gospel of Thomas',
-  'locke-two-treatises-of-government.txt':                      'Two Treatises of Government — John Locke',
-  'quran-english-translation-clearquran-edition-allah.pdf':     'The Quran (ClearQuran)',
-  'mill-on-liberty.txt':                                        'On Liberty — John Stuart Mill',
-  'paine-common-sense.txt':                                     'Common Sense — Thomas Paine',
-  'patrick-henry-give-me-liberty.txt':                          'Give Me Liberty or Give Me Death — Patrick Henry',
-  'plato-republic.txt':                                         'The Republic — Plato',
-};
-
-export function friendlySourceName(filename) {
-  return SOURCE_ALIASES[filename] || filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-}
+import { buildSystemPrompt, friendlySourceName } from './subjects.js';
+import { assertEmbedderMatchesSubject } from './embed/index.js';
 
 let _client = null;
-function getClient() {
+function defaultClient() {
   if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return _client;
 }
 
-function buildSystemPrompt(mode = 'deep') {
-  const conceptMap = getConceptMap();
-
-  const conceptMapSection = conceptMap ? `
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-THEOLOGICAL KNOWLEDGE MAP
-(Your full understanding of this subject — use it to guide students)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-CORE THEMES:
-${(conceptMap.coreThemes || []).join(', ')}
-
-SUGGESTED LEARNING PATH:
-${(conceptMap.learningPath || []).join(' → ')}
-
-KEY CONCEPTS AND RELATIONSHIPS:
-${(conceptMap.concepts || []).map(c =>
-  `• ${c.name}: ${c.description}${c.relatedConcepts?.length ? ` [related: ${c.relatedConcepts.join(', ')}]` : ''}`
-).join('\n')}
-
-CONCEPTUAL RELATIONSHIPS:
-${(conceptMap.relationships || []).map(r =>
-  `• ${r.from} ${r.type} ${r.to}: ${r.description}`
-).join('\n')}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-` : '';
-
-  return `You are a passionate, electrifying teacher of comparative theology and philosophy — think John Keating from Dead Poets Society, but with a scholar's command of sacred texts. You don't lecture at students; you pull them in. You make the ancient feel urgent, the familiar feel strange, the difficult feel possible. You love this material and it shows in every word.
-
-${conceptMapSection}
-
-YOUR VOICE AND MANNER:
-- Teach with energy and passion — not performance, but genuine excitement about ideas that have shaped humanity
-- Make the student feel like they just got let in on something remarkable. "Look at what this text is actually saying..."
-- ALWAYS answer the question first — give the full picture: names, dates, textual sources, historical context, doctrinal distinctions. Don't be vague.
-- Use surprise, contrast, and the unexpected angle. Juxtapose traditions in ways that make both come alive.
-- When comparing traditions, be precise about what each actually holds and where they genuinely diverge — no false harmony, no false conflict
-- Cite the specific texts, authors, or traditions your answer draws from
-- Correct misconceptions directly but with curiosity, not condescension — "Here's what's actually happening in that text..."
-- Use scholarly vocabulary naturally (soteriology, eschatology, kenosis, apophatic) and briefly illuminate terms when they appear
-- Carpe diem: treat every question as worth taking seriously, as if the student just asked the most interesting question in the room
-- End every response with 1–2 questions rooted specifically in what was just discussed. Do NOT label them ("Two questions worth sitting with", etc.) — just ask them as a natural continuation. Make them questions only *this specific exchange* could generate — anchored in the actual texts, figures, tensions, or contradictions just discussed. Never generic ("What does faith mean to you?"). Always specific ("If Paul's view in Romans 9 holds, how does that change your reading of the Sermon on the Mount?")
-- When citing a passage or argument, note the source — text, author, or tradition it comes from
-- When relevant, point the student toward a specific text, passage, or thinker from the loaded material they could go deeper on — name it explicitly so they can ask about it
-
-WELCOME ALL QUESTIONS:
-- Accept questions in any tone — casual, blunt, confused, skeptical, even hostile-sounding
-- Never shame or lecture the student about how they asked. Meet them where they are
-- If a question contains a false premise or bias, address it factually and move on — don't moralize
-- This is a knowledge and learning tool. Hate, harassment, or calls to harm have no place here — redirect firmly but without drama if that line is crossed
-- Objective discourse on ethics, religion, politics, philosophy, and history is not only allowed — it's the point
-
-YOU DRAW ONLY FROM THE SCRIPTURE AND SACRED TEXTS PROVIDED IN CONTEXT BELOW. If the texts do not address the question, say so plainly.
-
-${mode === 'quick'
-  ? 'RESPONSE MODE: Quick. Concise, accessible 1–2 paragraph answer. Plain language, no jargon unless essential. Still end with one specific question — grounded in what was just said, not generic.'
-  : 'RESPONSE MODE: Deep. Full scholarly treatment — historical context, textual analysis, cross-tradition comparison, doctrinal nuance. End with 1–2 questions that could only come from this specific exchange.'
-}`;
+/**
+ * Render a retrieved chunk's metadata line. Generic across subjects: concepts
+ * plus whatever string-array fields the subject's `extract` block produced.
+ * Theology contributes scriptureRefs here; a manual contributes componentTags.
+ */
+function metaLine(chunk) {
+  const parts = [];
+  if (chunk.concepts?.length) parts.push(`Concepts: ${chunk.concepts.join(', ')}`);
+  for (const [field, value] of Object.entries(chunk.extras || {})) {
+    if (Array.isArray(value) && value.length && value.every(v => typeof v === 'string')) {
+      parts.push(`${field}: ${value.join(', ')}`);
+    }
+  }
+  return parts.join(' | ');
 }
 
-async function buildContext(lastUserMessage) {
-  const results = await search(lastUserMessage, 10);
+/** Page citation, when the subject's ingestion produced page numbers. */
+function pageLabel(chunk) {
+  if (chunk.pdfPage == null) return '';
+  const printed = chunk.printedPage ? ` (printed ${chunk.printedPage})` : '';
+  return ` p.${chunk.pdfPage + 1}${printed}`;
+}
 
-  console.log(`\n[chat] Query: "${lastUserMessage.slice(0, 80)}"`);
-  console.log(`[chat] Retrieved ${results.length} chunks:`);
-  results.forEach((r, i) => console.log(`  ${i + 1}. [${r.source}] ${r.text.slice(0, 80).replace(/\n/g, ' ')}...`));
-
-  const contextStr = results.length > 0
-    ? `\n\nRELEVANT SOURCE PASSAGES:\n` +
-      results.map(r => {
-        const meta = [
-          r.concepts.length ? `Concepts: ${r.concepts.join(', ')}` : '',
-          r.scriptureRefs.length ? `Scripture: ${r.scriptureRefs.join(', ')}` : '',
-        ].filter(Boolean).join(' | ');
-        return `[${friendlySourceName(r.source)}${meta ? ' — ' + meta : ''}]\n${r.text}`;
+export function buildContext(profile, results) {
+  const contextStr = results.length
+    ? '\n\nRELEVANT SOURCE PASSAGES:\n' + results.map(r => {
+        const meta = metaLine(r);
+        return `[${friendlySourceName(profile, r.source)}${pageLabel(r)}${meta ? ' — ' + meta : ''}]\n${r.text}`;
       }).join('\n\n---\n\n')
-    : '\n\nNo closely matching passages found. Stay within what you know from the full content.';
+    : '\n\nNo closely matching passages found. Say so plainly rather than answering from outside the sources.';
 
-  // Deduplicated source list for citation panel
+  // Deduplicated source list for the citation panel.
   const sourceMap = new Map();
   for (const r of results) {
     if (!sourceMap.has(r.source)) {
-      sourceMap.set(r.source, { source: friendlySourceName(r.source), preview: r.text.slice(0, 160).replace(/\n/g, ' ') });
+      sourceMap.set(r.source, {
+        source: friendlySourceName(profile, r.source),
+        page: r.pdfPage == null ? null : r.pdfPage + 1,
+        printedPage: r.printedPage ?? null,
+        preview: r.text.slice(0, 160).replace(/\n/g, ' '),
+      });
     }
   }
-  const sources = [...sourceMap.values()];
 
-  // Chips: top concepts + scripture refs from retrieved chunks
+  // Explore chips: concepts first, then subject-specific string arrays.
   const seen = new Set();
   const chips = [];
   for (const r of results) {
-    for (const c of [...(r.concepts || []), ...(r.scriptureRefs || [])]) {
+    const candidates = [...(r.concepts || [])];
+    for (const value of Object.values(r.extras || {})) {
+      if (Array.isArray(value)) candidates.push(...value.filter(v => typeof v === 'string'));
+    }
+    for (const c of candidates) {
       if (c && !seen.has(c) && chips.length < 6) { seen.add(c); chips.push(c); }
     }
   }
 
-  // Analytics metadata — subjects/themes aggregated from retrieved chunks
-  const allSubjects = [...new Set(results.flatMap(r => r.concepts || []))].slice(0, 20);
-  const allThemes   = [...new Set(results.flatMap(r => r.themes   || []))].slice(0, 10);
-  const chunkRefs   = results.map(r => ({ source: r.source, chunk_index: r.chunk_index }));
+  const analytics = {
+    subjects: [...new Set(results.flatMap(r => r.concepts || []))].slice(0, 20),
+    themes:   [...new Set(results.flatMap(r => r.themes   || []))].slice(0, 10),
+    chunkRefs: results.map(r => ({ id: r.id, source: r.source, chunkIndex: r.chunkIndex })),
+  };
 
-  return { contextStr, sources, chips, analytics: { subjects: allSubjects, themes: allThemes, chunkRefs } };
+  return { contextStr, sources: [...sourceMap.values()], chips, analytics };
 }
 
-export async function chat(messages, mode = 'deep') {
-  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-  const { contextStr, sources, chips, analytics } = await buildContext(lastUserMessage);
-  const systemPrompt = buildSystemPrompt(mode) + contextStr;
+/**
+ * Build a teacher bound to one subject.
+ *
+ * `retrieve` may be supplied directly (tests, or a custom ranking); otherwise
+ * one is derived from `store` + `embedder`, with the embedding-compatibility
+ * guard applied once on first use.
+ */
+export function createTeacher({ profile, store, embedder, retrieve, client, log = console } = {}) {
+  if (!profile) throw new Error('createTeacher requires a subject profile');
 
-  const response = await getClient().messages.create({
-    model: 'claude-sonnet-5',
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages,
-  });
-
-  console.log(`[chat] Response length: ${response.content[0].text.length} chars\n`);
-  return { text: response.content[0].text, sources, chips, analytics };
-}
-
-export async function chatStream(messages, onChunk, mode = 'deep') {
-  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-  const { contextStr, sources, chips, analytics } = await buildContext(lastUserMessage);
-  const systemPrompt = buildSystemPrompt(mode) + contextStr;
-
-  const stream = await getClient().messages.stream({
-    model: 'claude-sonnet-5',
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages,
-  });
-
-  let fullText = '';
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-      fullText += event.delta.text;
-      onChunk(event.delta.text);
+  let guarded = false;
+  const defaultRetrieve = async (query) => {
+    if (!store || !embedder) {
+      throw new Error('createTeacher requires either `retrieve`, or both `store` and `embedder`');
     }
+    if (!guarded) {
+      // Refuse a cross-model query rather than returning ranked nonsense.
+      const meta = await store.getSubjectMeta(profile.slug);
+      if (!meta) throw new Error(`Subject "${profile.slug}" has no built knowledge base yet.`);
+      assertEmbedderMatchesSubject(embedder, { ...meta, slug: profile.slug });
+      guarded = true;
+    }
+    const vec = await embedder.embedQuery(query);
+    return store.searchByVector(profile.slug, vec, profile.retrieval.topK);
+  };
+
+  const doRetrieve = retrieve || defaultRetrieve;
+
+  async function prepare(messages, mode) {
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+    const results = await doRetrieve(lastUserMessage);
+
+    log.log?.(`[${profile.slug}] query: "${String(lastUserMessage).slice(0, 80)}" -> ${results.length} chunks`);
+
+    const conceptMap = profile.conceptMap.enabled && store
+      ? await store.getConceptMap(profile.slug)
+      : null;
+
+    const ctx = buildContext(profile, results);
+    return { ...ctx, systemPrompt: buildSystemPrompt(profile, { mode, conceptMap }) + ctx.contextStr };
   }
 
-  const finalMessage = await stream.finalMessage();
-  const outputTokens = finalMessage?.usage?.output_tokens || 0;
+  return {
+    profile,
 
-  console.log(`[chat] Stream complete, ${fullText.length} chars, ${outputTokens} tokens\n`);
-  return { text: fullText, sources, chips, analytics, outputTokens };
+    async chat(messages, { mode = 'deep' } = {}) {
+      const { systemPrompt, sources, chips, analytics } = await prepare(messages, mode);
+      const response = await (client || defaultClient()).messages.create({
+        model: profile.chat.model,
+        max_tokens: profile.chat.maxTokens,
+        system: systemPrompt,
+        messages,
+      });
+      const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+      return { text, sources, chips, analytics, outputTokens: response.usage?.output_tokens ?? 0 };
+    },
+
+    async chatStream(messages, onChunk, { mode = 'deep' } = {}) {
+      const { systemPrompt, sources, chips, analytics } = await prepare(messages, mode);
+      const stream = await (client || defaultClient()).messages.stream({
+        model: profile.chat.model,
+        max_tokens: profile.chat.maxTokens,
+        system: systemPrompt,
+        messages,
+      });
+
+      let text = '';
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+          text += event.delta.text;
+          onChunk(event.delta.text);
+        }
+      }
+      const final = await stream.finalMessage();
+      return { text, sources, chips, analytics, outputTokens: final?.usage?.output_tokens ?? 0 };
+    },
+  };
 }

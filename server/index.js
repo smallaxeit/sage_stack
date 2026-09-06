@@ -16,7 +16,7 @@ try {
 
 import express from 'express';
 import cors from 'cors';
-import { loadKnowledgeBase } from './lib/vectorStore.js';
+import { getRuntime } from './lib/runtime.js';
 import chatRouter from './routes/chat.js';
 import adminRouter from './routes/admin.js';
 
@@ -28,14 +28,38 @@ app.use(express.json());
 app.use('/api', chatRouter);
 app.use('/api/admin', adminRouter);
 
-async function init() {
-  console.log('Loading knowledge base...');
-  const loaded = await loadKnowledgeBase();
+/**
+ * Report what is available at boot, but never block on it. Subjects load
+ * lazily, so a missing knowledge base, an unreachable database, or an absent
+ * API key must not stop the server from starting — the operator needs the
+ * admin panel up precisely when something is unbuilt.
+ */
+async function reportSubjects() {
+  try {
+    const { store, subjects, errors } = await getRuntime().status();
+    console.log(`Store: ${store}`);
 
-  if (!loaded) {
-    console.warn('⚠️  No knowledge base found.');
-    console.warn('   Run "npm run build:knowledge" to build it from /source/');
+    if (subjects.length === 0) {
+      console.warn('No subjects defined. Add subjects/<slug>/subject.json');
+    }
+    for (const s of subjects) {
+      const state = s.ready
+        ? `${s.chunks} chunks, ${s.withEmbedding} embedded (${s.embedModel ?? 'model unknown'}, ${s.dim}d)`
+        : s.chunks > 0
+          ? `${s.chunks} chunks, NOT EMBEDDED — run the embedding backfill`
+          : 'not built — run npm run build:knowledge';
+      console.log(`  ${s.ready ? 'ok  ' : '--  '} ${s.slug.padEnd(12)} ${state}`);
+    }
+    for (const e of errors) {
+      console.warn(`  !!   ${e.slug}: ${e.error}`);
+    }
+  } catch (err) {
+    console.warn(`Could not read subject status: ${err.message}`);
   }
+}
+
+async function init() {
+  await reportSubjects();
 
   // Serve the built React app for all non-API requests
   app.use(express.static(path.join(__dirname, '../client/dist')));

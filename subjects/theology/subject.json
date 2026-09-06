@@ -35,6 +35,20 @@
     "topK": 10
   },
 
+  "sourceAliases": {
+    "EthiopianOrthodoxBible.pdf": "Ethiopian Orthodox Bible",
+    "The Holy Bible (KJV).pdf": "The Holy Bible (KJV)",
+    "book_of_mormon_missionary_english.pdf": "The Book of Mormon",
+    "en163-1.pdf": "The Great Controversy — Ellen G. White",
+    "gospel-of-thomas.txt": "The Gospel of Thomas",
+    "locke-two-treatises-of-government.txt": "Two Treatises of Government — John Locke",
+    "quran-english-translation-clearquran-edition-allah.pdf": "The Quran (ClearQuran)",
+    "mill-on-liberty.txt": "On Liberty — John Stuart Mill",
+    "paine-common-sense.txt": "Common Sense — Thomas Paine",
+    "patrick-henry-give-me-liberty.txt": "Give Me Liberty or Give Me Death — Patrick Henry",
+    "plato-republic.txt": "The Republic — Plato"
+  },
+
   "extract": {
     "scriptureRefs": "scripture/text references cited or implied (e.g. \"Genesis 1:1\", \"Surah 2:255\")",
     "philosophicalArguments": "logical arguments or reasoning structures present, each as {claim, reasoning, tradition}",

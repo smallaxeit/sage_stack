@@ -1,16 +1,12 @@
 import { Router } from 'express';
-import { supabase } from '../lib/supabase.js';
-import { buildEmbeddings } from '../lib/embeddings.js';
-import { getChunkCount, getMeta, getConceptMap, getKnowledgeBase } from '../lib/vectorStore.js';
-import { friendlySourceName } from '../lib/claude.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getRuntime } from '../lib/runtime.js';
+import { friendlySourceName } from '../lib/subjects.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
-
-const friendlyName = friendlySourceName;
 
 // Simple key auth — set ADMIN_KEY in .env
 function auth(req, res, next) {
@@ -23,99 +19,155 @@ function auth(req, res, next) {
 
 router.use(auth);
 
+async function resolveSubject(req) {
+  return req.body?.subject || req.query?.subject || await getRuntime().defaultSubject();
+}
+
 // ─── Stats overview ───────────────────────────────────────────────────────────
+// Now per subject rather than global — with tenants, a single global count is
+// meaningless and a cross-tenant read is exactly what §10 forbids.
 router.get('/stats', async (req, res) => {
-  const conceptMap = getConceptMap();
-  const meta = getMeta();
+  try {
+    const rt = getRuntime();
+    const status = await rt.status();
+    const subject = req.query.subject
+      || (status.subjects.length === 1 ? status.subjects[0].slug : null);
 
-  let embeddingCount = 0;
-  let sessionCount = 0;
-  let chatLogCount = 0;
-  let hotChunkCount = 0;
+    if (!subject) return res.json({ ...status, subject: null });
 
-  if (supabase) {
-    const [emb, sess, logs, hot] = await Promise.all([
-      supabase.from('chunks').select('id', { count: 'exact', head: true }).not('embedding', 'is', null),
-      supabase.from('sessions').select('id', { count: 'exact', head: true }),
-      supabase.from('chat_logs').select('id', { count: 'exact', head: true }),
-      supabase.from('chunk_analytics').select('id', { count: 'exact', head: true }).eq('sonnet_queued', true).eq('sonnet_done', false),
-    ]);
-    embeddingCount = emb.count || 0;
-    sessionCount   = sess.count || 0;
-    chatLogCount   = logs.count || 0;
-    hotChunkCount  = hot.count || 0;
+    const profile = await rt.getProfile(subject);
+    const row = status.subjects.find(s => s.slug === subject) || null;
+
+    let conceptMap = null;
+    if (profile.conceptMap.enabled) {
+      try { conceptMap = await rt.store.getConceptMap(subject); } catch { /* not built */ }
+    }
+
+    res.json({
+      store:        status.store,
+      subject,
+      subjects:     status.subjects,
+      errors:       status.errors,
+      chunks:       row?.chunks ?? 0,
+      embeddings:   row?.withEmbedding ?? 0,
+      embedModel:   row?.embedModel ?? null,
+      dim:          row?.dim ?? profile.embed.dim,
+      concepts:     conceptMap?.concepts?.length || 0,
+      traditions:   conceptMap?.traditions?.length || 0,
+      traditionsList: conceptMap?.traditions || [],
+      builtAt:      row?.builtAt ?? null,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({
-    chunks:         getChunkCount(),
-    concepts:       conceptMap?.concepts?.length || 0,
-    traditions:     conceptMap?.traditions?.length || 0,
-    traditionsList: conceptMap?.traditions || [],
-    builtAt:        meta?.builtAt || null,
-    sources:        meta?.sources || [],
-    embeddings:     embeddingCount,
-    sessions:       sessionCount,
-    chatLogs:       chatLogCount,
-    sonnetQueued:   hotChunkCount,
-  });
 });
 
 // ─── Source breakdown ─────────────────────────────────────────────────────────
-router.get('/sources', (req, res) => {
-  const { chunks } = getKnowledgeBase();
-  const map = {};
-  for (const chunk of chunks) {
-    if (!map[chunk.source]) map[chunk.source] = { filename: chunk.source, source: friendlyName(chunk.source), total: 0, analyzed: 0 };
-    map[chunk.source].total++;
-    if (chunk.meta?.summary) map[chunk.source].analyzed++;
+router.get('/sources', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const subject = await resolveSubject(req);
+    const profile = await rt.getProfile(subject);
+    const chunks = await rt.store.getChunks(subject);
+
+    const map = {};
+    for (const c of chunks) {
+      if (!map[c.source]) {
+        map[c.source] = {
+          filename: c.source,
+          source: friendlySourceName(profile, c.source),
+          total: 0,
+          analyzed: 0,
+        };
+      }
+      map[c.source].total++;
+      if (c.summary) map[c.source].analyzed++;
+    }
+    res.json(Object.values(map).sort((a, b) => b.total - a.total));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
-  res.json(Object.values(map).sort((a, b) => b.total - a.total));
 });
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
-router.get('/analytics', async (req, res) => {
-  if (!supabase) return res.json({ subjects: [], hotChunks: [], recentLogs: [] });
-
-  const [subjects, hotChunks, recentLogs] = await Promise.all([
-    supabase.from('usage_summary').select('*').limit(20),
-    supabase.from('hot_chunks').select('*').limit(20),
-    supabase.from('chat_logs').select('user_message, subjects, sources_used, mode, created_at').order('created_at', { ascending: false }).limit(20),
-  ]);
-
-  res.json({
-    subjects:   subjects.data || [],
-    hotChunks:  hotChunks.data || [],
-    recentLogs: recentLogs.data || [],
+// The Supabase analytics tables (chat_logs, chunk_analytics, usage_summary,
+// hot_chunks) are not carried forward by the pivot. Reported honestly as
+// unavailable rather than returning empty arrays that look like "no traffic".
+router.get('/analytics', (req, res) => {
+  res.status(501).json({
+    error: 'Analytics were Supabase-backed and are not yet reimplemented on the new store.',
+    subjects: [], hotChunks: [], recentLogs: [],
   });
 });
 
-// ─── Trigger embedding build ───────────────────────────────────────────────────
+// ─── Embedding backfill ───────────────────────────────────────────────────────
 let embeddingRunning = false;
 router.post('/build-embeddings', async (req, res) => {
   if (embeddingRunning) return res.json({ ok: false, message: 'Already running' });
-  embeddingRunning = true;
-  res.json({ ok: true, message: 'Embedding build started' });
+
+  let rt, subject, profile, embedder;
   try {
-    const count = await buildEmbeddings((done, total) => {
-      console.log(`[embeddings] ${done}/${total}`);
-    });
-    console.log(`[embeddings] Done — ${count} embeddings built`);
+    rt = getRuntime();
+    subject = await resolveSubject(req);
+    profile = await rt.getProfile(subject);
+    embedder = rt.getEmbedder(profile);
   } catch (err) {
-    console.error('[embeddings] Error:', err.message);
+    return res.status(400).json({ ok: false, message: err.message });
+  }
+
+  embeddingRunning = true;
+  res.json({ ok: true, message: `Embedding build started for ${subject}`, subject });
+
+  try {
+    const BATCH = 128;
+    let done = 0;
+    for (;;) {
+      const missing = await rt.store.chunksMissingEmbeddings(subject, { limit: BATCH });
+      if (missing.length === 0) break;
+      const vectors = await embedder.embedDocuments(missing.map(m => m.text));
+      await rt.store.setEmbeddings(subject, missing.map((m, i) => ({ id: m.id, vector: vectors[i] })));
+      done += missing.length;
+      console.log(`[embeddings:${subject}] ${done}`);
+    }
+    console.log(`[embeddings:${subject}] done — ${done} embedded`);
+  } catch (err) {
+    console.error(`[embeddings:${subject}] error:`, err.message);
   } finally {
     embeddingRunning = false;
   }
 });
 
-// ─── Concept map rebuild ───────────────────────────────────────────────────────
+// ─── Concept map rebuild ──────────────────────────────────────────────────────
 let conceptMapRunning = false;
-router.post('/build-concept-map', (req, res) => {
+router.post('/build-concept-map', async (req, res) => {
   if (conceptMapRunning) return res.json({ ok: false, message: 'Already running' });
+
+  let subject, profile;
+  try {
+    subject = await resolveSubject(req);
+    profile = await getRuntime().getProfile(subject);
+  } catch (err) {
+    return res.status(400).json({ ok: false, message: err.message });
+  }
+  if (!profile.conceptMap.enabled) {
+    return res.json({ ok: false, message: `Subject "${subject}" has conceptMap disabled` });
+  }
+
   conceptMapRunning = true;
-  const serverDir = path.join(__dirname, '..');
-  const proc = spawn('node', ['rebuild-concepts.js'], { cwd: serverDir });
+  const proc = spawn('node', ['rebuild-concepts.js', '--subject', subject], {
+    cwd: path.join(__dirname, '..'),
+  });
   proc.on('exit', () => { conceptMapRunning = false; });
-  res.json({ ok: true, message: 'Concept map rebuild started' });
+  res.json({ ok: true, message: `Concept map rebuild started for ${subject}`, subject });
+});
+
+// ─── Subjects ─────────────────────────────────────────────────────────────────
+router.get('/subjects', async (req, res) => {
+  try {
+    res.json(await getRuntime().status());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;
