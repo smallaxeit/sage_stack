@@ -133,7 +133,13 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
       : null;
 
     const ctx = buildContext(profile, results);
-    return { ...ctx, systemPrompt: buildSystemPrompt(profile, { mode, conceptMap }) + ctx.contextStr };
+    // Only ask for page citations when the retrieved passages actually have
+    // pages; otherwise the model invents them (see subjects.js CITE_PAGES_RULES).
+    const hasPages = results.some(r => r.pdfPage != null);
+    return {
+      ...ctx,
+      systemPrompt: buildSystemPrompt(profile, { mode, conceptMap, hasPages }) + ctx.contextStr,
+    };
   }
 
   return {
