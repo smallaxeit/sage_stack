@@ -11,9 +11,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildContext, createTeacher } from './claude.js';
-import { normaliseProfile, loadSubject } from './subjects.js';
+import { normalizeProfile, loadSubject } from './subjects.js';
 
-const profile = normaliseProfile('demo', {
+const profile = normalizeProfile('demo', {
   voice: 'VOICE',
   sourceAliases: { 'plato-republic.txt': 'The Republic — Plato' },
   retrieval: { topK: 3 },
@@ -157,7 +157,7 @@ describe('createTeacher', () => {
     assert.equal(out.outputTokens, 9);
   });
 
-  test('retrieval is scoped to the subject and honours topK', async () => {
+  test('retrieval is scoped to the subject and honors topK', async () => {
     const seen = [];
     const store = {
       getSubjectMeta: async () => ({ embedModel: 'voyage-3.5', dim: 4 }),
@@ -206,7 +206,7 @@ describe('createTeacher', () => {
     await off.chat([{ role: 'user', content: 'q' }]);
     assert.equal(fetched, 0, 'disabled subject must not fetch a concept map');
 
-    const onProfile = normaliseProfile('demo', { voice: 'V', conceptMap: { enabled: true } });
+    const onProfile = normalizeProfile('demo', { voice: 'V', conceptMap: { enabled: true } });
     const client = fakeClient();
     const on = createTeacher({ profile: onProfile, store, embedder, client, log: quiet });
     await on.chat([{ role: 'user', content: 'q' }]);

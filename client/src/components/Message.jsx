@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm';
  * One chat turn, in ask_cooter's shape: a small uppercase role label above a
  * bordered bubble, user turns tinted.
  *
- * The important behaviour is inline citation linking. The model is instructed
+ * The important behavior is inline citation linking. The model is instructed
  * to cite pages as [p.419], and those become clickable links that open the page
  * viewer at that scan. That is what makes an answer checkable in one click
  * rather than "go find it yourself" — and it is why the source list below is a
@@ -43,8 +43,40 @@ function CitationText({ text, onOpenCite }) {
   );
 }
 
+const STAGE_LABEL = {
+  sending:    'Sending…',
+  retrieving: 'Searching the sources…',
+  thinking:   'Reading the passages…',
+};
+
+/**
+ * Shown between asking and the first token. That gap is retrieval plus a cold
+ * model call — commonly 5-30 seconds — and an empty bubble for that long is
+ * indistinguishable from a broken request.
+ *
+ * The elapsed counter only appears after 5s: soon enough to reassure on a slow
+ * answer, late enough not to make a fast one feel measured.
+ */
+function Thinking({ stage, startedAt }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [startedAt]);
+
+  return (
+    <div className="thinking">
+      <span className="dots"><i /><i /><i /></span>
+      <span>{STAGE_LABEL[stage] || 'Working…'}</span>
+      {elapsed >= 5 && <span className="elapsed">{elapsed}s</span>}
+    </div>
+  );
+}
+
 export default function Message({
-  role, content, sources = [], chips = [], streaming = false,
+  role, content, sources = [], chips = [], streaming = false, stage = null, startedAt = null,
   onChipClick, onOpenDoc, onOpenCite,
 }) {
   const isUser = role === 'user';
@@ -72,9 +104,11 @@ export default function Message({
     <div className={`msg ${isUser ? 'user' : ''}`}>
       <div className="role">{isUser ? 'You' : 'Sage'}</div>
 
-      <div className={`bubble ${streaming && !content ? 'blink' : ''}`}>
+      <div className="bubble">
         {isUser ? (
           <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{content}</p>
+        ) : (!content && stage) ? (
+          <Thinking stage={stage} startedAt={startedAt} />
         ) : (
           <>
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>

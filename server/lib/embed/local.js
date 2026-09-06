@@ -19,7 +19,7 @@
  * model needs neither.
  */
 
-import { normalise } from './index.js';
+import { normalize } from './index.js';
 
 /** Known model -> dimension, so a mismatch is caught before any work happens. */
 const KNOWN_DIMS = {
@@ -81,7 +81,7 @@ export function createLocalEmbedder(opts = {}) {
     const out = [];
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize).map(t => prefix + t);
-      // Mean pooling + L2 normalisation is the standard recipe for these
+      // Mean pooling + L2 normalization is the standard recipe for these
       // sentence-transformer models; without pooling you get per-token vectors.
       const res = await pipe(batch, { pooling: 'mean', normalize: true });
       const data = res.tolist ? res.tolist() : res;
@@ -115,4 +115,4 @@ export function createLocalEmbedder(opts = {}) {
   };
 }
 
-export { normalise, KNOWN_DIMS };
+export { normalize, KNOWN_DIMS };

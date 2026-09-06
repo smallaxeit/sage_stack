@@ -26,7 +26,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { assertValidSlug, normaliseChunk, toVectorArray } from './index.js';
+import { assertValidSlug, normalizeChunk, toVectorArray } from './index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '../../..');
@@ -176,7 +176,7 @@ export function createFilesStore(opts = {}) {
       if (!state) throw new Error(`Unknown subject: ${slug} — call initSubject first`);
       const dim = state.meta.dim;
 
-      const incoming = input.map(normaliseChunk);
+      const incoming = input.map(normalizeChunk);
       for (const c of incoming) {
         if (c.embedding && c.embedding.length !== dim) {
           throw new Error(`chunk ${c.id}: embedding has ${c.embedding.length} dims, subject "${slug}" expects ${dim}`);

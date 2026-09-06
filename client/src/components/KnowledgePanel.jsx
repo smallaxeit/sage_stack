@@ -199,7 +199,7 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                   <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
                     {d.ingested ? `${d.chunks.toLocaleString()} chunks` : 'not ingested'}
                     {d.pages > 0 && ` · ${d.pages.toLocaleString()} pages`}
-                    {d.analysed > 0 && ` · ${d.analysed.toLocaleString()} analysed`}
+                    {d.analyzed > 0 && ` · ${d.analyzed.toLocaleString()} analyzed`}
                     {d.bytes != null && ` · ${fmtBytes(d.bytes)}`}
                     {!d.hasFile && ' · file not stored locally'}
                   </div>

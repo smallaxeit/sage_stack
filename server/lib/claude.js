@@ -157,8 +157,16 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
       return { text, sources, chips, analytics, outputTokens: response.usage?.output_tokens ?? 0 };
     },
 
-    async chatStream(messages, onChunk, { mode = 'deep' } = {}) {
+    /**
+     * `onStage` reports what is happening before any token exists. Retrieval
+     * plus a cold model call can be 5-30 seconds of silence, which is
+     * indistinguishable from a hang — and on a proxied dev server, long enough
+     * to look like a dropped connection.
+     */
+    async chatStream(messages, onChunk, { mode = 'deep', onStage = () => {} } = {}) {
+      onStage('retrieving');
       const { systemPrompt, sources, chips, analytics } = await prepare(messages, mode);
+      onStage('thinking');
       const stream = await (client || defaultClient()).messages.stream({
         model: profile.chat.model,
         max_tokens: profile.chat.maxTokens,

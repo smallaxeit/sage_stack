@@ -107,9 +107,9 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
   const unembedded = Math.max(0, chunks - embedded);
   const embPct = chunks > 0 ? Math.round((embedded / chunks) * 100) : 0;
 
-  const analysed = docs.reduce((n, d) => n + (d.analysed || 0), 0);
-  const anaPct = chunks > 0 ? Math.round((analysed / chunks) * 100) : 0;
-  const unanalysed = Math.max(0, chunks - analysed);
+  const analyzed = docs.reduce((n, d) => n + (d.analyzed || 0), 0);
+  const anaPct = chunks > 0 ? Math.round((analyzed / chunks) * 100) : 0;
+  const unanalysed = Math.max(0, chunks - analyzed);
 
   const costEmbed = (unembedded * TOKENS_PER_CHUNK / 1e6) * RATE.voyage;
   const costAnalyse = (unanalysed * TOKENS_PER_CHUNK / 1e6) * RATE.haikuIn
@@ -186,7 +186,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
               </div>
 
               <div>
-                <div className="admin-row"><span>Analysed</span><span>{anaPct}%</span></div>
+                <div className="admin-row"><span>Analyzed</span><span>{anaPct}%</span></div>
                 <Bar pct={anaPct} />
                 <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
                   Concepts and summaries. Retrieval works without it; concept maps do not.
@@ -223,7 +223,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
             docs.length === 0
               ? <p style={{ color: 'var(--muted)', fontSize: 13 }}>No documents loaded.</p>
               : docs.map(d => {
-                  const pct = d.chunks > 0 ? Math.round((d.analysed / d.chunks) * 100) : 0;
+                  const pct = d.chunks > 0 ? Math.round((d.analyzed / d.chunks) * 100) : 0;
                   return (
                     <div key={d.filename}>
                       <div className="admin-row">
@@ -231,7 +231,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
                           {d.filename}
                         </span>
                         <span style={{ color: pct === 100 ? '#3fb950' : 'var(--muted)', whiteSpace: 'nowrap' }}>
-                          {pct === 100 ? '✓ analysed' : `${pct}%`}
+                          {pct === 100 ? '✓ analyzed' : `${pct}%`}
                         </span>
                       </div>
                       <Bar pct={pct} />
@@ -272,7 +272,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
                   <div style={{ flex: 1 }}>
                     <div className="t">Ingest source directory</div>
                     <div className="d">
-                      Parse, analyse and embed every file in <code>subjects/{subject}/source/</code>.
+                      Parse, analyze and embed every file in <code>subjects/{subject}/source/</code>.
                       Re-running updates existing documents in place.
                       {unanalysed > 0 && <> Analysis of {unanalysed.toLocaleString()} chunks ≈ <span className="cost">{money(costAnalyse)}</span>.</>}
                     </div>
@@ -294,7 +294,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
                   </div>
                   <button
                     className="btn"
-                    disabled={mapRunning || current?.conceptMap === false || analysed === 0}
+                    disabled={mapRunning || current?.conceptMap === false || analyzed === 0}
                     onClick={() => run('/admin/build-concept-map', 'Rebuilding concept map')}
                   >
                     {mapRunning ? 'Running…' : 'Run'}
