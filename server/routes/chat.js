@@ -181,12 +181,64 @@ router.post('/chat', async (req, res) => {
   } catch (err) {
     console.error(`[${subject}] chat error:`, err);
     // The real reason matters for an operator-run tool — an unbuilt subject or
-    // an embedder mismatch is actionable, and hiding it behind flavour text
-    // costs more than the flavour is worth.
-    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+    // an embedder mismatch is actionable. But the raw SDK message is often a
+    // JSON blob, which is unreadable in a chat bubble, so translate the ones
+    // that have a clear cause and a clear fix.
+    res.write(`data: ${JSON.stringify({ error: explainChatError(err) })}\n\n`);
     res.end();
   }
 });
+
+/**
+ * Turn an SDK/API failure into something an operator can act on.
+ *
+ * These are the failures that actually stop the app, and each has exactly one
+ * fix. Anything unrecognised falls through with its own message rather than
+ * being flattened into "something went wrong".
+ */
+export function explainChatError(err) {
+  const raw = String(err?.message ?? err ?? '');
+  const status = err?.status ?? err?.statusCode;
+
+  // The SDK puts the API's JSON body in the message; pull the human part out.
+  let detail = raw;
+  const brace = raw.indexOf('{');
+  if (brace !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(brace));
+      detail = parsed?.error?.message || parsed?.message || raw;
+    } catch { /* not JSON after all */ }
+  }
+
+  if (/credit balance is too low/i.test(detail)) {
+    return 'Anthropic account is out of credits — answers cannot be generated. '
+         + 'Add credits at console.anthropic.com (Plans & Billing). '
+         + 'Nothing is wrong with the knowledge base; it is untouched.';
+  }
+  if (status === 401 || /invalid x-api-key|authentication/i.test(detail)) {
+    return 'ANTHROPIC_API_KEY is missing or rejected. Check it in server/.env, then restart the server.';
+  }
+  if (status === 429 || /rate.?limit/i.test(detail)) {
+    return 'Rate limited by the API. Wait a moment and ask again.';
+  }
+  if (/VOYAGE_API_KEY/i.test(detail)) {
+    return 'VOYAGE_API_KEY is not set, so the question cannot be embedded and nothing can be retrieved. '
+         + 'Add it to server/.env, or set EMBED_DRIVER=local.';
+  }
+  if (/voyage api error/i.test(detail)) {
+    return `The embedding service rejected the request — ${detail}`;
+  }
+  if (/model mismatch|dimension mismatch/i.test(detail)) {
+    return detail;   // already written for a human
+  }
+  if (/no built knowledge base/i.test(detail)) {
+    return detail;
+  }
+  if (status >= 500) {
+    return 'The model API returned a server error. This is usually transient — try again.';
+  }
+  return detail;
+}
 
 router.delete('/chat/:sessionId', async (req, res) => {
   try {

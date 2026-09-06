@@ -15,8 +15,8 @@ import path from 'path';
 
 import {
   normaliseProfile, loadSubject, listSubjects, buildSystemPrompt,
-  renderConceptMap, renderExtractSchema, subjectSourceDir,
-  DEFAULT_RULES, DEFAULT_GROUNDING, INGEST_MODES, EMBED_DRIVERS,
+  renderConceptMap, renderExtractSchema, subjectSourceDir, renderGrounding,
+  DEFAULT_RULES, DEFAULT_GROUNDING, GROUNDING_MODES, INGEST_MODES, EMBED_DRIVERS,
 } from './subjects.js';
 
 const MINIMAL = { voice: 'You are a test teacher.' };
@@ -35,7 +35,7 @@ describe('normaliseProfile — defaults', () => {
     assert.equal(p.conceptMap.enabled, false, 'concept map is opt-in');
     assert.deepEqual(p.extract, {});
     assert.equal(p.rules, DEFAULT_RULES);
-    assert.equal(p.grounding, DEFAULT_GROUNDING);
+    assert.deepEqual(p.grounding, { mode: 'grounded', instruction: null });
   });
 
   test('the default rules are domain-neutral', () => {
@@ -97,6 +97,110 @@ describe('normaliseProfile — validation', () => {
     assert.throws(() => normaliseProfile('demo', { ...MINIMAL, extract: ['a'] }), /extract must be an object/);
     assert.throws(() => normaliseProfile('demo', { ...MINIMAL, extract: { specs: '' } }), /extract\.specs/);
     assert.throws(() => normaliseProfile('demo', { ...MINIMAL, extract: { specs: 42 } }), /extract\.specs/);
+  });
+});
+
+describe('grounding modes', () => {
+  test('accepts a mode name', () => {
+    const p = normaliseProfile('demo', { ...MINIMAL, grounding: { mode: 'strict' } });
+    assert.equal(p.grounding.mode, 'strict');
+    assert.match(renderGrounding(p), /GROUNDING — STRICT/);
+  });
+
+  test('a legacy string is kept verbatim', () => {
+    // The first subject.json files used a plain string; silently changing what
+    // they do would be worse than carrying the shape.
+    const p = normaliseProfile('demo', { ...MINIMAL, grounding: 'ONLY use the passages.' });
+    assert.equal(p.grounding.mode, 'custom');
+    assert.equal(renderGrounding(p), 'ONLY use the passages.');
+  });
+
+  test('a mode can be extended with extra instruction text', () => {
+    const p = normaliseProfile('demo', {
+      ...MINIMAL,
+      grounding: { mode: 'strict', instruction: 'Never mention church councils.' },
+    });
+    const text = renderGrounding(p);
+    assert.match(text, /GROUNDING — STRICT/);
+    assert.match(text, /Never mention church councils\./);
+  });
+
+  test('rejects an unknown mode, and a custom mode with no text', () => {
+    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, grounding: { mode: 'loose' } }),
+      /grounding\.mode must be one of/);
+    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, grounding: { mode: 'custom' } }),
+      /custom grounding needs instruction text/);
+  });
+
+  test('strict forbids naming absent sources, not just using them', () => {
+    // The observed failure was an answer that named Ignatius, Justin Martyr,
+    // Constantine and Laodicea *while* saying they were not in the corpus.
+    // Disclaiming a claim still puts it in front of the reader.
+    const strict = GROUNDING_MODES.strict;
+    assert.match(strict, /not even to say they are absent/i);
+    assert.match(strict, /overrides any\s*\n?part of your persona/i);
+  });
+
+  test('grounding is the LAST instruction in the prompt', () => {
+    // It is the constraint most likely to be contradicted by an expansive
+    // persona, so it gets the recency position.
+    const p = normaliseProfile('demo', {
+      voice: 'VOICE', rules: 'RULES', modes: { deep: 'MODE-DEEP' },
+      grounding: { mode: 'strict' },
+    });
+    const prompt = buildSystemPrompt(p, { mode: 'deep' });
+    assert.ok(prompt.indexOf('GROUNDING — STRICT') > prompt.indexOf('MODE-DEEP'),
+      'grounding must come after the mode instruction');
+    assert.ok(prompt.indexOf('GROUNDING — STRICT') > prompt.indexOf('VOICE'));
+    assert.ok(prompt.trimEnd().endsWith(GROUNDING_MODES.strict.trim()),
+      'grounding must be the final block');
+  });
+
+  test('no mode lets the model claim the collection lacks something', () => {
+    // The failure this prevents: SageStack told the user there is no Book of
+    // Enoch, when the Ethiopian Orthodox Bible — its largest source, 2,124
+    // chunks — contains it and retrieval finds it easily.
+    //
+    // Retrieval returns topK passages. Absence from those is not absence from
+    // the collection, and the model cannot see the difference. Any mode that
+    // permits a "not in the collection" claim will eventually make a false one.
+    for (const mode of ['strict', 'grounded']) {
+      const text = GROUNDING_MODES[mode];
+      assert.match(text, /not the whole\s*\n?\s*collection|whole\s*\n?\s*collection/i,
+        `${mode} must state the passages are a subset`);
+      assert.match(text, /never say|never that/i,
+        `${mode} must forbid claiming something is absent from the collection`);
+    }
+  });
+
+  test('committed subjects never assert what their corpus lacks', async () => {
+    const { subjects } = await listSubjects();
+    for (const p of subjects) {
+      const text = (p.grounding.instruction || '') + '\n' + p.voice;
+
+      // Split into sentences and drop the ones that FORBID such a claim —
+      // "Never assert what this collection does or does not contain" is the
+      // cure, not the disease.
+      const claims = text
+        .split(/(?<=[.!?])\s+|\n+/)
+        .filter(sentence => !/\b(never|don'?t|do not|avoid|rather than)\b/i.test(sentence));
+
+      // "contains no X" / "there is no X" are the shapes that produced a false
+      // denial. A subject may describe what it IS, not what it is not.
+      const offender = claims.find(sentence =>
+        /\bcontains no\b|\bdoes not contain\b|\bthere (?:is|are) no\b|\bit has no\b/i.test(sentence));
+
+      assert.ok(!offender,
+        `subject "${p.slug}" asserts an absence the model will repeat: ${JSON.stringify(offender)}`);
+    }
+  });
+
+  test('every mode is domain-neutral', () => {
+    for (const [name, text] of Object.entries(GROUNDING_MODES)) {
+      for (const word of ['scripture', 'theolog', 'tradition', 'sacred', 'torque']) {
+        assert.ok(!text.toLowerCase().includes(word), `${name} leaks "${word}"`);
+      }
+    }
   });
 });
 
@@ -189,18 +293,28 @@ describe('the real subjects/ directory', () => {
     assert.equal(p.ingest.mode, 'text');
 
     const prompt = buildSystemPrompt(p, { mode: 'deep' });
-    // Distinctive phrases from the hardcoded prompt this replaces.
+    // Distinctive phrases from the hardcoded prompt this replaces. The
+    // grounding clause is deliberately NOT among them — the original
+    // ("YOU DRAW ONLY FROM THE SCRIPTURE…") was replaced by strict mode after
+    // it failed to hold against this very voice.
     for (const phrase of [
       'John Keating from Dead Poets Society',
       'Carpe diem',
       'soteriology, eschatology, kenosis, apophatic',
       'WELCOME ALL QUESTIONS',
-      'YOU DRAW ONLY FROM THE SCRIPTURE',
       'RESPONSE MODE: Deep',
     ]) {
       assert.ok(prompt.includes(phrase), `theology prompt lost: "${phrase}"`);
     }
     assert.ok(buildSystemPrompt(p, { mode: 'quick' }).includes('RESPONSE MODE: Quick'));
+
+    // The voice must no longer ask for material the corpus cannot supply.
+    assert.equal(p.grounding.mode, 'strict');
+    assert.ok(!p.voice.includes('names, dates, textual sources, historical context'),
+      'the voice still instructs the model to supply external history');
+    assert.ok(prompt.trimEnd().endsWith(
+      [GROUNDING_MODES.strict, p.grounding.instruction].join('\n\n').trim(),
+    ), 'strict grounding must be the final instruction');
   });
 
   test('softail is a genuinely different subject, not theology with a new name', async () => {

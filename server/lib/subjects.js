@@ -41,9 +41,70 @@ export const DEFAULT_RULES = `HOW TO ANSWER:
 - If the sources don't address the question, say so plainly rather than guessing.
 `;
 
-export const DEFAULT_GROUNDING =
-  'You draw ONLY from the source passages provided in context below. ' +
-  'If the sources do not address the question, say so plainly.';
+/**
+ * Grounding modes — how far outside the retrieved passages an answer may go.
+ *
+ * This exists because "draw only from the sources" is not self-enforcing. A
+ * voice that asks for "the full picture: names, dates, historical context"
+ * will supply them from training data and then disclaim them, which reads as
+ * authoritative and is exactly the failure worth preventing: the reader gets
+ * unsourced specifics they have no way to check.
+ *
+ * Naming a thing to say you cannot discuss it still puts the claim in front of
+ * the reader, so `strict` forbids that explicitly rather than trusting a
+ * general instruction to cover it.
+ */
+export const GROUNDING_MODES = {
+  strict: `GROUNDING — STRICT. This is the controlling instruction and overrides any
+part of your persona that conflicts with it.
+
+- Everything factual in your answer must come from the passages below. Not from
+  what you know about this subject generally.
+- Do NOT name specific external works, authors, councils, dates, events or
+  figures that are absent from the passages — not even to say they are absent,
+  and not even as helpful background. Naming them still puts unsourced claims
+  in front of the reader as though they were established.
+- Do not estimate, infer, or reconstruct specifics — numbers, dates, sequences,
+  attributions — that the passages do not state.
+
+WHAT YOU MAY SAY ABOUT COVERAGE — read this carefully:
+- The passages below are the handful retrieved for THIS question. They are not
+  the whole collection, and you cannot see the rest of it.
+- So never say a text, book or topic "is not in" the collection, "isn't
+  included", or "doesn't exist here". You have no way to know that, and saying
+  it produces confident false denials about material that is present.
+- Say only what is true: "the passages I have here don't cover that". Then
+  invite a narrower question, because a different question retrieves different
+  passages.
+- If the reader says something IS in the collection, believe them. They can see
+  what was loaded and you cannot. Ask them to point you at it rather than
+  contradicting them.`,
+
+  grounded: `GROUNDING — SOURCED. Your answer comes from the passages below.
+
+- The substance of the answer must come from the passages.
+- You may use general knowledge only to define a term or give one sentence of
+  orienting context, and you must mark it plainly — "outside the loaded
+  sources" — so the reader can tell the difference.
+- Never present unsourced specifics (dates, named works, attributions) as
+  though they came from the material.
+- The passages are the few retrieved for this question, not the whole
+  collection. Say "the passages I have here don't cover that" — never that
+  something "is not in" the collection, which you cannot see and cannot know.`,
+
+  open: `GROUNDING — OPEN. The passages below are your primary material, but you may
+draw on general knowledge where it genuinely helps.
+
+- Lead with what the passages support, and cite it.
+- Clearly distinguish anything from general knowledge from what the sources
+  say — the reader must always be able to tell which is which.
+- Flag where general knowledge is contested or where you are uncertain.`,
+};
+
+export const DEFAULT_GROUNDING_MODE = 'grounded';
+
+/** Back-compat: `grounding` used to be a plain instruction string. */
+export const DEFAULT_GROUNDING = GROUNDING_MODES[DEFAULT_GROUNDING_MODE];
 
 /**
  * Page-citation instructions, chosen per request rather than baked into the
@@ -99,6 +160,33 @@ function fail(slug, msg) {
   throw new Error(`subject "${slug}": ${msg}`);
 }
 
+/**
+ * Grounding config accepts three shapes:
+ *
+ *   omitted                          -> the default mode
+ *   "some instruction text"          -> legacy: used verbatim as the instruction
+ *   { mode, instruction? }           -> a named mode, optionally with extra text
+ *
+ * The legacy string form is kept working because it is what the first
+ * subject.json files used, and silently changing their behaviour would be
+ * worse than carrying the shape.
+ */
+export function normaliseGrounding(raw) {
+  if (raw == null) return { mode: DEFAULT_GROUNDING_MODE, instruction: null };
+  if (typeof raw === 'string') return { mode: 'custom', instruction: raw };
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return { mode: raw.mode || DEFAULT_GROUNDING_MODE, instruction: raw.instruction ?? null };
+  }
+  return { mode: DEFAULT_GROUNDING_MODE, instruction: null };
+}
+
+/** The prompt text for a subject's grounding setting. */
+export function renderGrounding(profile) {
+  const g = profile.grounding;
+  const base = g.mode === 'custom' ? '' : (GROUNDING_MODES[g.mode] || GROUNDING_MODES[DEFAULT_GROUNDING_MODE]);
+  return [base, g.instruction].filter(Boolean).join('\n\n').trim();
+}
+
 /** Merge a raw subject.json over the defaults and validate the result. */
 export function normaliseProfile(slug, raw = {}) {
   assertValidSlug(slug);
@@ -122,7 +210,7 @@ export function normaliseProfile(slug, raw = {}) {
     sourceAliases: raw.sourceAliases || {},
     store:         raw.store || null,
     rules:         raw.rules ?? DEFAULT_RULES,
-    grounding:     raw.grounding ?? DEFAULT_GROUNDING,
+    grounding:     normaliseGrounding(raw.grounding),
   };
 
   if (typeof p.voice !== 'string' || !p.voice.trim()) {
@@ -153,6 +241,17 @@ export function normaliseProfile(slug, raw = {}) {
   if (typeof p.sourceAliases !== 'object' || Array.isArray(p.sourceAliases)) {
     fail(slug, 'sourceAliases must be an object mapping filename -> display title');
   }
+  const groundingModes = [...Object.keys(GROUNDING_MODES), 'custom'];
+  if (!groundingModes.includes(p.grounding.mode)) {
+    fail(slug, `grounding.mode must be one of ${groundingModes.join(', ')} (got ${JSON.stringify(p.grounding.mode)})`);
+  }
+  if (p.grounding.instruction != null && typeof p.grounding.instruction !== 'string') {
+    fail(slug, 'grounding.instruction must be a string');
+  }
+  if (p.grounding.mode === 'custom' && !p.grounding.instruction?.trim()) {
+    fail(slug, 'a custom grounding needs instruction text');
+  }
+
   if (p.store !== null) {
     if (typeof p.store !== 'object' || Array.isArray(p.store)) {
       fail(slug, 'store must be an object, or omitted to use the app-wide KB_STORE');
@@ -265,8 +364,12 @@ export function buildSystemPrompt(profile, { mode = 'deep', conceptMap = null, h
     // Chosen from what was actually retrieved, not from the subject profile —
     // the same subject can hold paged and unpaged documents.
     (hasPages ? CITE_PAGES_RULES : NO_PAGES_RULES),
-    profile.grounding.trim(),
     modeInstruction.trim(),
+    // Grounding comes LAST deliberately. It is the constraint most likely to be
+    // contradicted by an expansive persona ("give the full picture: names,
+    // dates, historical context"), and the last instruction in a prompt carries
+    // more weight than one buried in the middle.
+    renderGrounding(profile),
   ].filter(Boolean).join('\n\n');
 }
 
