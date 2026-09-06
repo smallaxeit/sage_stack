@@ -8,6 +8,7 @@
     "dev:client": "cd client && npm run dev",
     "build:knowledge": "cd server && node build-knowledge.js",
     "export:supabase": "node server/scripts/export-supabase.js",
+    "test": "node --test server/lib/**/*.test.js",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install"
   },
   "devDependencies": {
