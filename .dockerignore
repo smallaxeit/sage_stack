@@ -18,3 +18,8 @@ server/.env
 .gitignore
 images/
 source/
+subjects/*/source/
+data/
+docs/
+*.md
+!subjects/**/subject.json

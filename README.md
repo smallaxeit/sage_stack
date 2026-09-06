@@ -5,8 +5,12 @@
 SageStack turns a pile of documents into something you can ask questions of —
 and every answer cites the page you can open to verify it.
 
-It runs entirely on your machine. Documents, embeddings, and chat history stay
-local unless you deliberately point it somewhere else.
+**Where it stores things and where it runs are both your choice**, and they are
+independent of each other. Storage is a driver: plain files, a local Postgres,
+a hosted one, Supabase, or a read-only connection to a corpus someone else
+built. Deployment is an Express app in a container — a laptop, a VPS, or any
+platform that runs Node. Nothing in the design assumes local, and nothing
+assumes hosted.
 
 ---
 
@@ -85,11 +89,40 @@ instruction is chosen per request from what was actually retrieved.
 | Chunk analysis | `claude-haiku-4-5` — one call per chunk, so the cheap tier |
 | Concept map | `claude-sonnet-5` — aggregates what analysis extracted |
 | Embeddings | Voyage (`voyage-3.5`) or a local ONNX model, pluggable |
-| Storage | local files, or Postgres + pgvector, pluggable |
+| Storage | files, or any Postgres + pgvector (local, managed, Supabase) — pluggable |
 
 Storage and embeddings are independent choices. Neither knows about the other,
 and one test suite runs against every storage backend to keep them
 interchangeable.
+
+### Storage options
+
+| `KB_STORE` | Backend | When |
+|---|---|---|
+| `files` | JSON + a binary vector sidecar on disk | default; no database, clone and run |
+| `postgres` | any Postgres with pgvector | local, RDS, Neon, Railway, **Supabase** — it is one connection string |
+| `askcooter` | an existing ask_cooter corpus, read-only | reuse a corpus rather than rebuilding it |
+
+**Supabase is just Postgres.** Point the `postgres` driver at the connection
+string from Supabase's dashboard (Project Settings → Database) and enable
+`pgvector` in the SQL editor. Nothing else changes — schema-per-subject, HNSW
+indexes and the isolation guarantees all work the same, because they are
+ordinary Postgres.
+
+```
+KB_STORE=postgres
+DATABASE_URL=postgresql://postgres.<ref>:<password>@<region>.pooler.supabase.com:6543/postgres
+```
+
+Use the **session pooler** string for a long-lived server. The transaction
+pooler does not support the prepared statements the driver relies on.
+
+> Not yet exercised against a live Supabase project on this repo — the path is
+> ordinary Postgres, but treat the first run as a verification.
+
+A subject can also carry its **own** `store` block, so different knowledge areas
+can live in different places — one on local disk, one in Supabase, one reading
+a colleague's database. See `subjects/softail/subject.json`.
 
 ---
 
@@ -132,6 +165,40 @@ npm start          # http://localhost:3001
 
 npm run dev        # or: server + client with hot reload
 ```
+
+---
+
+## Deploying
+
+The server is a plain Express app that also serves the built client, so any
+Node host works. A multi-stage `Dockerfile` is included and bakes no secrets —
+environment variables are injected at runtime.
+
+```bash
+docker build -t sagestack .
+docker run -p 3001:3001 --env-file server/.env sagestack
+```
+
+Choosing a storage backend is most of the deployment decision:
+
+| Deployment | Storage that fits |
+|---|---|
+| Laptop / single machine | `files`, or a local Postgres |
+| Container on a VPS | local Postgres, or a managed one |
+| Ephemeral / serverless filesystem | **not** `files` — the disk does not survive; use Postgres |
+| Multi-instance | Postgres, so instances share state |
+
+With `files`, mount a volume at `/app/data` or the knowledge base disappears
+with the container. With Postgres, nothing needs to persist locally.
+
+Two things to set for anything public, both off by default:
+
+- `ADMIN_KEY` — without it, the admin and upload routes are **unauthenticated**
+- `DEFAULT_SUBJECT` — otherwise a request that names no subject is rejected
+  once more than one exists
+
+Chat history is stored server-side per subject, so it follows the store you
+chose rather than living in the browser.
 
 ---
 
@@ -228,4 +295,7 @@ routine test run can never write into a working database.
   subject records the model that built it, and a query with the wrong one is
   refused. `voyage-3` and `voyage-3.5` are both 1024-dim, so only the model
   check can tell them apart.
-- Supabase support is parked rather than removed — see `ARCHITECTURE_PLAN.md`.
+- Supabase works today through the `postgres` driver (it is Postgres). The
+  older REST-based modules — `lib/supabase.js`, `lib/embeddings.js` — are
+  parked, not wired; they would only be needed for an environment that cannot
+  open a direct database connection. See `ARCHITECTURE_PLAN.md`.
