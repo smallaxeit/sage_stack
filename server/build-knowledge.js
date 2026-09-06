@@ -236,7 +236,7 @@ async function analyzeChunk(chunk, idx, total) {
 async function streamJSON(prompt) {
   let text = '';
   const stream = await client.messages.stream({
-    model: 'claude-sonnet-4-6',
+    model: 'claude-sonnet-5',
     max_tokens: 16000,
     messages: [{ role: 'user', content: prompt }],
   });

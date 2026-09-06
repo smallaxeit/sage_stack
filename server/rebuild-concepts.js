@@ -110,7 +110,7 @@ async function main() {
       // Use streaming to avoid connection timeouts on long responses
       let fullText = '';
       const stream = await client.messages.stream({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 16000,
         messages: [{ role: 'user', content: CONCEPT_MAP_PROMPT({ sources, concepts: topConcepts, arguments: allArgs }) }],
       });
