@@ -35,7 +35,10 @@ router.get('/status', async (req, res) => {
 
     let conceptMap = null;
     if (row?.conceptMap) {
-      try { conceptMap = await rt.store.getConceptMap(row.slug); } catch { /* not built */ }
+      try {
+        const profile = await rt.getProfile(row.slug);
+        conceptMap = await rt.getStore(profile).getConceptMap(row.slug);
+      } catch { /* not built */ }
     }
 
     res.json({

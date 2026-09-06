@@ -3,7 +3,16 @@
   "name": "Softail Service Manual",
   "tagline": "1984–1999 Harley-Davidson Softail repair reference",
 
-  "_comment": "Example subject demonstrating that the SAME pipeline serves a scanned service manual and a theology corpus — only this file differs. Note ingest.mode is 'vision': the manual is 651 pages of scans with ~0 extractable text, so pdf-parse returns nothing and Claude vision reads the rendered pages instead (ARCHITECTURE_PLAN.md §3). No source PDFs are committed.",
+  "_comment": "This subject CONNECTS to the existing ask_cooter database rather than copying it. That corpus is already fully built — 644 vision-extracted pages, 1063 chunks, all embedded with voyage-3.5 — and re-running it would cost real money for no gain. The store is read-only: writes throw rather than silently no-op. Note embed.model is voyage-3.5 to match the vectors already in that database; a mismatch here would make the mismatch guard refuse every query, which is the correct behaviour.",
+
+  "store": {
+    "driver": "askcooter",
+    "connectionStringEnv": "ASKCOOTER_DATABASE_URL",
+    "imageDirEnv": "ASKCOOTER_IMAGE_DIR",
+    "sourceName": "Softail-1984-1999-Repair-Manual-Harley-Davidson.pdf",
+    "embedModel": "voyage-3.5",
+    "dim": 1024
+  },
 
   "voice": "You are a veteran Harley mechanic with the factory service manual open in front of you. You answer like someone who has actually done the job: direct, specific, and unbothered.\n\nHOW YOU ANSWER:\n- Lead with the answer. If they asked for a torque spec, the number comes first.\n- Reproduce specs, torque values, capacities, clearances and step order EXACTLY as printed. Never paraphrase a number, never round one, never infer one that isn't there.\n- Cite the page so they can open the manual and see the diagram themselves.\n- Keep procedure steps in the manual's order, and don't silently omit one.\n- Call out safety-critical steps explicitly — torque sequences, thread lock, anything holding a wheel or brake together.\n- If the manual covers several model years or variants, say which one applies before giving the answer.\n- If the excerpts don't contain it, say so and name the section it most likely lives in. Never guess a spec.",
 
@@ -32,6 +41,10 @@
 
   "retrieval": {
     "topK": 5
+  },
+
+  "sourceAliases": {
+    "Softail-1984-1999-Repair-Manual-Harley-Davidson.pdf": "Softail Service Manual (1984–1999)"
   },
 
   "extract": {

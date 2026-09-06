@@ -59,6 +59,7 @@ const DEFAULTS = {
   conceptMap:    { enabled: false },
   retrieval:     { topK: 10 },
   sourceAliases: {},           // filename -> human-readable title
+  store:         null,         // null = use the app-wide KB_STORE; else a per-subject backend
   rules:         DEFAULT_RULES,
   grounding:     DEFAULT_GROUNDING,
   modes:         DEFAULT_MODES,
@@ -89,6 +90,7 @@ export function normaliseProfile(slug, raw = {}) {
     modes:         { ...DEFAULTS.modes,      ...(raw.modes      || {}) },
     extract:       raw.extract || {},
     sourceAliases: raw.sourceAliases || {},
+    store:         raw.store || null,
     rules:         raw.rules ?? DEFAULT_RULES,
     grounding:     raw.grounding ?? DEFAULT_GROUNDING,
   };
@@ -120,6 +122,17 @@ export function normaliseProfile(slug, raw = {}) {
   }
   if (typeof p.sourceAliases !== 'object' || Array.isArray(p.sourceAliases)) {
     fail(slug, 'sourceAliases must be an object mapping filename -> display title');
+  }
+  if (p.store !== null) {
+    if (typeof p.store !== 'object' || Array.isArray(p.store)) {
+      fail(slug, 'store must be an object, or omitted to use the app-wide KB_STORE');
+    }
+    if (!p.store.driver) fail(slug, 'store.driver is required when a store block is present');
+    // Connection strings are secrets and must not live in a committed profile.
+    // connectionStringEnv names the environment variable holding it.
+    if (p.store.connectionString && p.store.connectionStringEnv) {
+      fail(slug, 'store: set connectionString OR connectionStringEnv, not both');
+    }
   }
   if (typeof p.extract !== 'object' || Array.isArray(p.extract)) {
     fail(slug, 'extract must be an object mapping field name -> description');
@@ -222,6 +235,33 @@ export function buildSystemPrompt(profile, { mode = 'deep', conceptMap = null } 
     profile.grounding.trim(),
     modeInstruction.trim(),
   ].filter(Boolean).join('\n\n');
+}
+
+/**
+ * Resolve a subject's store options, reading any env-referenced secret.
+ * Returns null when the subject uses the app-wide default store.
+ */
+export function resolveStoreConfig(profile, env = process.env) {
+  const cfg = profile.store;
+  if (!cfg) return null;
+  const out = { ...cfg };
+  // Any key ending in "Env" names an environment variable holding the real
+  // value, so secrets and machine-specific paths stay out of a committed
+  // profile: connectionStringEnv -> connectionString, imageDirEnv -> imageDir.
+  for (const [key, name] of Object.entries(cfg)) {
+    if (!key.endsWith('Env')) continue;
+    const target = key.slice(0, -3);
+    const value = env[name];
+    if (!value) {
+      throw new Error(
+        `subject "${profile.slug}": store.${key} names ${name}, which is not set. ` +
+        `Add it to server/.env.`,
+      );
+    }
+    out[target] = value;
+    delete out[key];
+  }
+  return out;
 }
 
 /**
