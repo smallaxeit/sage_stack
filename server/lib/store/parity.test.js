@@ -252,6 +252,50 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       assert.equal(await store.deleteChunks(slug, []), 0);
     });
 
+    test('listSessions returns a subject\'s conversations, newest first', async () => {
+      const a = `${slug}::sess-a`;
+      const b = `${slug}::sess-b`;
+      const other = `paritytest_other_${rnd()}::sess-c`;
+
+      await store.saveSession(a, [
+        { role: 'user', content: 'What is justice?' },
+        { role: 'assistant', content: 'A long answer.' },
+      ]);
+      await new Promise(r => setTimeout(r, 10));   // distinct updatedAt
+      await store.saveSession(b, [{ role: 'user', content: 'Second question' }]);
+      await store.saveSession(other, [{ role: 'user', content: 'Another tenant' }]);
+
+      const list = await store.listSessions(slug);
+      assert.equal(list.length, 2, 'must not include another subject\'s sessions');
+      assert.deepEqual(list.map(x => x.id).sort(), ['sess-a', 'sess-b'],
+        'ids are returned without the subject prefix');
+
+      const rowA = list.find(x => x.id === 'sess-a');
+      assert.equal(rowA.title, 'What is justice?', 'title is the first user message');
+      assert.equal(rowA.messageCount, 2);
+      assert.ok(rowA.updatedAt, 'updatedAt is populated');
+
+      // Newest first.
+      assert.equal(list[0].id, 'sess-b');
+
+      await store.deleteSession(a);
+      await store.deleteSession(b);
+      await store.deleteSession(other);
+      assert.deepEqual(await store.listSessions(slug), []);
+    });
+
+    test('listSessions handles an empty subject and a long title', async () => {
+      assert.deepEqual(await store.listSessions(slug), []);
+
+      const id = `${slug}::long`;
+      const long = 'x'.repeat(300);
+      await store.saveSession(id, [{ role: 'user', content: long }]);
+      const [row] = await store.listSessions(slug);
+      assert.ok(row.title.length <= 91, `title not truncated: ${row.title.length}`);
+      assert.ok(row.title.endsWith('…'));
+      await store.deleteSession(id);
+    });
+
     test('rejects an invalid slug', async () => {
       for (const bad of ['Bad-Slug', '1leading', '../escape', '', 'a'.repeat(64)]) {
         await assert.rejects(() => store.initSubject(bad, { dim: DIM }), /Invalid subject slug/);
