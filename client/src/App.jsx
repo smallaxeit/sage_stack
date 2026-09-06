@@ -79,7 +79,10 @@ export default function App() {
    * the reader can switch documents in the viewer.
    */
   const openCitation = useCallback((page) => {
-    const doc = docs.find(d => d.ingested) || docs[0];
+    // Only a document whose file is on disk can be opened at a page. Subjects
+    // whose chunks were imported without their sources have none, and those
+    // subjects also carry no page numbers, so no citation should reach here.
+    const doc = docs.find(d => d.hasFile);
     if (!doc) return;
     setOpenDoc({ filename: doc.filename, title: doc.filename, page });
   }, [docs]);

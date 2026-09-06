@@ -1,11 +1,9 @@
 import { Router } from 'express';
-import { spawn } from 'child_process';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import Anthropic from '@anthropic-ai/sdk';
 import { getRuntime } from '../lib/runtime.js';
 import { friendlySourceName } from '../lib/subjects.js';
+import { rebuildConceptMap } from '../lib/conceptmap.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
 // Simple key auth — set ADMIN_KEY in .env
@@ -141,27 +139,51 @@ router.post('/build-embeddings', async (req, res) => {
 });
 
 // ─── Concept map rebuild ──────────────────────────────────────────────────────
-let conceptMapRunning = false;
-router.post('/build-concept-map', async (req, res) => {
-  if (conceptMapRunning) return res.json({ ok: false, message: 'Already running' });
+// Previously spawned rebuild-concepts.js, which read a Supabase-era
+// knowledge-base.json and hardcoded a theology prompt. Now runs in-process
+// against the subject's own store and profile.
+let conceptMap = null;   // { subject, stage, startedAt, finishedAt, error, concepts }
 
-  let subject, profile;
+router.post('/build-concept-map', async (req, res) => {
+  if (conceptMap && !conceptMap.finishedAt) {
+    return res.json({ ok: false, message: `Already running for ${conceptMap.subject}` });
+  }
+
+  let rt, subject, profile;
   try {
+    rt = getRuntime();
     subject = await resolveSubject(req);
-    profile = await getRuntime().getProfile(subject);
+    profile = await rt.getProfile(subject);
   } catch (err) {
     return res.status(400).json({ ok: false, message: err.message });
   }
   if (!profile.conceptMap.enabled) {
-    return res.json({ ok: false, message: `Subject "${subject}" has conceptMap disabled` });
+    return res.json({ ok: false, message: `Subject "${subject}" has conceptMap disabled in its profile` });
+  }
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(400).json({ ok: false, message: 'ANTHROPIC_API_KEY is not set' });
   }
 
-  conceptMapRunning = true;
-  const proc = spawn('node', ['rebuild-concepts.js', '--subject', subject], {
-    cwd: path.join(__dirname, '..'),
-  });
-  proc.on('exit', () => { conceptMapRunning = false; });
+  conceptMap = { subject, stage: 'starting', startedAt: Date.now() };
   res.json({ ok: true, message: `Concept map rebuild started for ${subject}`, subject });
+
+  try {
+    const result = await rebuildConceptMap({
+      profile,
+      store: rt.getStore(profile),
+      client: new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
+      onProgress: (p) => { conceptMap = { ...conceptMap, ...p }; },
+    });
+    conceptMap = { ...conceptMap, stage: 'done', finishedAt: Date.now(), concepts: result.concepts.length };
+    console.log(`[conceptmap:${subject}] ${result.concepts.length} concepts, ${result.coreThemes.length} core themes`);
+  } catch (err) {
+    conceptMap = { ...conceptMap, stage: 'error', finishedAt: Date.now(), error: err.message };
+    console.error(`[conceptmap:${subject}] ${err.message}`);
+  }
+});
+
+router.get('/concept-map-progress', (req, res) => {
+  res.json(conceptMap || { stage: 'idle' });
 });
 
 // ─── Subjects ─────────────────────────────────────────────────────────────────

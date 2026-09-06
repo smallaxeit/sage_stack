@@ -202,7 +202,12 @@ export default function PageViewer({ subject, doc, onClose }) {
             />
           ) : (
             <div className="text" style={{ color: 'var(--muted)' }}>
-              No preview available for this document.
+              <p><strong>No preview available.</strong></p>
+              <p>
+                This document's chunks are in the knowledge base, but its source file is not
+                stored locally — imported corpora carry their text and embeddings without the
+                original. There is no page to show.
+              </p>
             </div>
           )}
         </div>
