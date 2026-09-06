@@ -38,6 +38,38 @@ Approved for a future session. Nothing here is in progress.
 
 ---
 
+## Models
+
+- **Add an `llm/` driver layer for model swapping.** Third instance of a
+  pattern already proven twice (`store/`, `embed/`): one interface, several
+  drivers, one parity suite. Build `anthropic` plus `openai-compatible` — the
+  latter covers Microsoft Foundry, OpenAI, Groq, OpenRouter and a local Ollama
+  from the same code, since they all speak the same shape. A Foundry-specific
+  SDK is not needed.
+
+  Config belongs per call site, not just per subject, because the three calls
+  have opposite economics:
+
+  ```jsonc
+  "chat":       { "provider": "anthropic", "model": "claude-sonnet-5" },
+  "analysis":   { "provider": "ollama",    "model": "qwen2.5:7b" },
+  "conceptMap": { "provider": "foundry",   "model": "gpt-4o-mini" }
+  ```
+
+  The prize is **analysis** — the only genuinely expensive call (~$20 per
+  5,000 chunks) and the one best suited to a cheap model, being structured
+  extraction rather than reasoning. Chat costs cents and benefits most from a
+  strong model.
+
+  Two things to measure before trusting a swap, both cheap because the failure
+  counters already exist: the analysis prompt demands strict JSON and smaller
+  models are worse at it (run 50 chunks, compare parse-failure rates), and the
+  strict grounding rules ask for disciplined refusals that a small model will
+  follow less reliably.
+
+  Note Foundry is metered Azure, not free. Genuinely free means local (Ollama),
+  which the same driver covers.
+
 ## Cost
 
 - **Prompt caching is not used, and the prefix is ideal for it.** The system
