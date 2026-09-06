@@ -18,6 +18,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, friendlySourceName } from './subjects.js';
 import { assertEmbedderMatchesSubject } from './embed/index.js';
+import { resolveSearchQuery } from './rewrite.js';
 
 let _client = null;
 function defaultClient() {
@@ -147,10 +148,24 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
   const doRetrieve = retrieve || defaultRetrieve;
 
   async function prepare(messages, mode) {
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-    const results = await doRetrieve(lastUserMessage);
+    // Retrieval embeds ONE string while the model sees the whole conversation,
+    // so a follow-up like "what about the rear one?" would otherwise be
+    // embedded with no subject at all. Rewriting restores the missing context
+    // before the vector search, and falls back to the raw question on any
+    // failure — retrieval must never depend on it.
+    const { query, rewritten, original } = await resolveSearchQuery({
+      messages,
+      client: profile.retrieval.rewriteFollowUps === false ? null : (client || defaultClient()),
+      log,
+    });
 
-    log.log?.(`[${profile.slug}] query: "${String(lastUserMessage).slice(0, 80)}" -> ${results.length} chunks`);
+    const results = await doRetrieve(query);
+
+    log.log?.(
+      `[${profile.slug}] query: "${String(query).slice(0, 80)}"` +
+      (rewritten ? ` (rewritten from "${String(original).slice(0, 50)}")` : '') +
+      ` -> ${results.length} chunks`,
+    );
 
     const conceptMap = profile.conceptMap.enabled && store
       ? await store.getConceptMap(profile.slug)

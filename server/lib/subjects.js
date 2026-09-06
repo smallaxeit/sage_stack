@@ -148,7 +148,7 @@ const DEFAULTS = {
   chat:          { model: 'claude-sonnet-5', maxTokens: 4096 },
   extract:       {},
   conceptMap:    { enabled: false },
-  retrieval:     { topK: 10 },
+  retrieval:     { topK: 10, rewriteFollowUps: true },
   sourceAliases: {},           // filename -> human-readable title
   store:         null,         // null = use the app-wide KB_STORE; else a per-subject backend
   rules:         DEFAULT_RULES,
@@ -228,6 +228,9 @@ export function normalizeProfile(slug, raw = {}) {
   if (!Number.isInteger(p.ingest.chunkTarget) || !Number.isInteger(p.ingest.chunkMax)
       || p.ingest.chunkTarget <= 0 || p.ingest.chunkMax < p.ingest.chunkTarget) {
     fail(slug, 'ingest.chunkTarget and chunkMax must be positive integers with chunkMax >= chunkTarget');
+  }
+  if (typeof p.retrieval.rewriteFollowUps !== 'boolean') {
+    fail(slug, 'retrieval.rewriteFollowUps must be true or false');
   }
   if (!Number.isInteger(p.retrieval.topK) || p.retrieval.topK <= 0) {
     fail(slug, `retrieval.topK must be a positive integer (got ${JSON.stringify(p.retrieval.topK)})`);
