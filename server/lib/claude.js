@@ -48,11 +48,35 @@ function pageLabel(chunk) {
   return ` p.${chunk.pdfPage + 1}${printed}`;
 }
 
+/**
+ * Hard ceiling on how much of one chunk reaches the prompt.
+ *
+ * Ingestion caps chunks at profile.ingest.chunkMax, but IMPORTED corpora carry
+ * whatever chunking they were built with. The theology import contained a
+ * single 1.24 MB chunk — the whole of Plato's Republic as one row, from an
+ * older pipeline whose paragraph splitting had failed. Retrieved, it put
+ * ~310,000 tokens into one request: roughly $0.62 a question, and it drowned
+ * the nine genuine passages beside it.
+ *
+ * 12,000 chars is several times any sane chunk and still bounds the damage.
+ * Truncation is visible in the prompt rather than silent, because a chunk
+ * hitting this is a data problem worth noticing, not something to paper over.
+ */
+const MAX_CHUNK_CHARS = 12000;
+
+function chunkText(chunk) {
+  const t = chunk.text ?? '';
+  if (t.length <= MAX_CHUNK_CHARS) return t;
+  return t.slice(0, MAX_CHUNK_CHARS) +
+    `\n\n[… passage truncated: ${t.length.toLocaleString()} characters, far beyond a normal chunk. ` +
+    `Treat it as partial, and do not assume the rest supports a claim.]`;
+}
+
 export function buildContext(profile, results) {
   const contextStr = results.length
     ? '\n\nRELEVANT SOURCE PASSAGES:\n' + results.map(r => {
         const meta = metaLine(r);
-        return `[${friendlySourceName(profile, r.source)}${pageLabel(r)}${meta ? ' — ' + meta : ''}]\n${r.text}`;
+        return `[${friendlySourceName(profile, r.source)}${pageLabel(r)}${meta ? ' — ' + meta : ''}]\n${chunkText(r)}`;
       }).join('\n\n---\n\n')
     : '\n\nNo closely matching passages found. Say so plainly rather than answering from outside the sources.';
 
@@ -136,25 +160,58 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     // Only ask for page citations when the retrieved passages actually have
     // pages; otherwise the model invents them (see subjects.js CITE_PAGES_RULES).
     const hasPages = results.some(r => r.pdfPage != null);
-    return {
-      ...ctx,
-      systemPrompt: buildSystemPrompt(profile, { mode, conceptMap, hasPages }) + ctx.contextStr,
-    };
+    const stable = buildSystemPrompt(profile, { mode, conceptMap, hasPages });
+
+    /**
+     * The system prompt is sent as TWO blocks so the first can be cached.
+     *
+     * The split is exact: everything before the retrieved passages — voice,
+     * rules, grounding, and the concept map — is byte-identical for every
+     * question in a subject and mode. The passages differ every time. That is
+     * precisely the prefix shape prompt caching wants.
+     *
+     * It is worth real money here: theology's stable half is ~4,500 tokens,
+     * ~3,600 of it concept map, resent on every single question.
+     *
+     * Caching is a PREFIX match, so anything that varies must stay in the
+     * second block. Nothing time- or request-dependent may be added above it.
+     */
+    const systemBlocks = [
+      { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: ctx.contextStr },
+    ];
+
+    return { ...ctx, systemBlocks, systemPrompt: stable + ctx.contextStr };
+  }
+
+  /** Report cache effectiveness — zero reads across repeats means a silent invalidator. */
+  function logCache(usage) {
+    if (!usage) return;
+    const read = usage.cache_read_input_tokens ?? 0;
+    const written = usage.cache_creation_input_tokens ?? 0;
+    if (read || written) {
+      log.log?.(`[${profile.slug}] cache: ${read} read, ${written} written, ${usage.input_tokens ?? 0} uncached`);
+    }
   }
 
   return {
     profile,
 
     async chat(messages, { mode = 'deep' } = {}) {
-      const { systemPrompt, sources, chips, analytics } = await prepare(messages, mode);
+      const { systemBlocks, sources, chips, analytics } = await prepare(messages, mode);
       const response = await (client || defaultClient()).messages.create({
         model: profile.chat.model,
         max_tokens: profile.chat.maxTokens,
-        system: systemPrompt,
+        system: systemBlocks,
         messages,
       });
+      logCache(response.usage);
       const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-      return { text, sources, chips, analytics, outputTokens: response.usage?.output_tokens ?? 0 };
+      return {
+        text, sources, chips, analytics,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        usage: response.usage,
+      };
     },
 
     /**
@@ -165,12 +222,12 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
      */
     async chatStream(messages, onChunk, { mode = 'deep', onStage = () => {} } = {}) {
       onStage('retrieving');
-      const { systemPrompt, sources, chips, analytics } = await prepare(messages, mode);
+      const { systemBlocks, sources, chips, analytics } = await prepare(messages, mode);
       onStage('thinking');
       const stream = await (client || defaultClient()).messages.stream({
         model: profile.chat.model,
         max_tokens: profile.chat.maxTokens,
-        system: systemPrompt,
+        system: systemBlocks,
         messages,
       });
 
@@ -182,6 +239,7 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
         }
       }
       const final = await stream.finalMessage();
+      logCache(final?.usage);
       return { text, sources, chips, analytics, outputTokens: final?.usage?.output_tokens ?? 0 };
     },
   };

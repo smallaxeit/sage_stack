@@ -54,6 +54,10 @@ function fakeClient(text = 'ANSWER') {
 
 const quiet = { log: () => {} };
 
+/** The system prompt is sent as cacheable blocks; flatten for assertions. */
+const systemText = (req) =>
+  Array.isArray(req.system) ? req.system.map(b => b.text).join("") : String(req.system);
+
 describe('buildContext', () => {
   test('renders passages with friendly source names', () => {
     const { contextStr } = buildContext(profile, [chunk()]);
@@ -111,6 +115,27 @@ describe('buildContext', () => {
     assert.ok(chips.includes('justice'));
   });
 
+  test('an absurdly long chunk is truncated rather than flooding the prompt', () => {
+    // A real one: the theology import carried a 1.24 MB chunk — the whole of
+    // Plato's Republic as a single row from an older pipeline. Retrieved, it put
+    // ~310,000 tokens into one request (~$0.62) and drowned the nine genuine
+    // passages beside it.
+    const huge = 'x'.repeat(500_000);
+    const { contextStr } = buildContext(profile, [chunk({ text: huge })]);
+
+    assert.ok(contextStr.length < 20_000,
+      `context should be bounded, got ${contextStr.length} chars`);
+    assert.match(contextStr, /passage truncated/);
+    assert.match(contextStr, /500,000 characters/);
+  });
+
+  test('a normal chunk is passed through untouched', () => {
+    const normal = 'y'.repeat(2000);
+    const { contextStr } = buildContext(profile, [chunk({ text: normal })]);
+    assert.ok(contextStr.includes(normal), 'a sane chunk must not be altered');
+    assert.ok(!contextStr.includes('truncated'));
+  });
+
   test('no results produces an explicit instruction, not silence', () => {
     const { contextStr, sources, chips } = buildContext(profile, []);
     assert.ok(/No closely matching passages/.test(contextStr));
@@ -140,8 +165,48 @@ describe('createTeacher', () => {
     const req = client.calls[0];
     assert.equal(req.model, 'claude-sonnet-5');
     assert.equal(req.max_tokens, 1234);
-    assert.ok(req.system.includes('VOICE'), 'profile voice missing from system prompt');
-    assert.ok(req.system.includes('The Republic — Plato'), 'context missing from system prompt');
+    assert.ok(systemText(req).includes('VOICE'), 'profile voice missing from system prompt');
+    assert.ok(systemText(req).includes('The Republic — Plato'), 'context missing from system prompt');
+  });
+
+  test('the system prompt is split for caching, with the varying half second', async () => {
+    // Caching is a PREFIX match: the first block must be byte-identical across
+    // questions, and anything per-request must live in the second. Getting this
+    // backwards silently costs money forever — the cache would never hit.
+    const client = fakeClient();
+    const teacher = createTeacher({ profile, client, log: quiet, retrieve: async () => [chunk()] });
+    await teacher.chat([{ role: 'user', content: 'q' }]);
+
+    const { system } = client.calls[0];
+    assert.ok(Array.isArray(system), 'system must be blocks, not a string');
+    assert.equal(system.length, 2);
+
+    const [stable, varying] = system;
+    assert.deepEqual(stable.cache_control, { type: 'ephemeral' }, 'the stable half must be marked cacheable');
+    assert.equal(varying.cache_control, undefined, 'the varying half must NOT be cached');
+
+    assert.ok(stable.text.includes('VOICE'), 'voice belongs in the cached prefix');
+    assert.ok(!stable.text.includes('The Republic'), 'retrieved passages must not be in the cached prefix');
+    assert.ok(varying.text.includes('The Republic'), 'passages belong in the varying block');
+  });
+
+  test('the cached prefix is identical across different questions', async () => {
+    // The actual guarantee. If any per-request value leaked into the prefix,
+    // these would differ and the cache would never hit.
+    const client = fakeClient();
+    let n = 0;
+    const teacher = createTeacher({
+      profile, client, log: quiet,
+      retrieve: async () => [chunk({ id: `c${n}`, text: `passage number ${n++}` })],
+    });
+
+    await teacher.chat([{ role: 'user', content: 'first question' }]);
+    await teacher.chat([{ role: 'user', content: 'an entirely different question' }]);
+
+    assert.equal(client.calls[0].system[0].text, client.calls[1].system[0].text,
+      'the cached prefix drifted between requests');
+    assert.notEqual(client.calls[0].system[1].text, client.calls[1].system[1].text,
+      'precondition: the varying block should actually vary');
   });
 
   test('chatStream streams deltas and returns the full text', async () => {
@@ -211,7 +276,7 @@ describe('createTeacher', () => {
     const on = createTeacher({ profile: onProfile, store, embedder, client, log: quiet });
     await on.chat([{ role: 'user', content: 'q' }]);
     assert.equal(fetched, 1);
-    assert.ok(client.calls[0].system.includes('grace'));
+    assert.ok(systemText(client.calls[0]).includes('grace'));
   });
 
   test('needs either retrieve, or store plus embedder', async () => {
@@ -231,7 +296,7 @@ describe('the theology subject end to end', () => {
     });
 
     await teacher.chat([{ role: 'user', content: 'what is justice' }], { mode: 'deep' });
-    const sys = client.calls[0].system;
+    const sys = systemText(client.calls[0]);
     assert.ok(sys.includes('John Keating'), 'theology voice missing');
     assert.ok(sys.includes('RESPONSE MODE: Deep'));
     assert.ok(sys.includes('The Republic — Plato'), 'sourceAliases not applied');
