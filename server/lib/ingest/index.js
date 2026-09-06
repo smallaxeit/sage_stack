@@ -1,30 +1,50 @@
 /**
- * ingest/index.js — document -> chunks -> (analysis) -> embeddings -> store.
+ * ingest/index.js — document -> pages -> chunks -> (analysis) -> embeddings -> store.
  *
  * Subject-scoped end to end: every write names one subject, and the profile
  * supplies chunk sizes, the extract schema, and the embedder configuration.
  *
- * DEGRADES DELIBERATELY. The three stages have different requirements, so the
+ * The original file is kept under data/documents/<slug>/ so the UI can open the
+ * exact page a citation came from. That path is independent of the store
+ * driver, because a Postgres-backed subject still needs its source PDF on disk
+ * to serve.
+ *
+ * DEGRADES DELIBERATELY. The stages have different requirements, so the
  * pipeline runs as far as the environment allows and reports what it skipped:
  *
  *   parse + chunk   always works, no keys
  *   embed           needs VOYAGE_API_KEY, or EMBED_DRIVER=local (no key)
  *   analyse         needs ANTHROPIC_API_KEY — enrichment only
  *
- * Without embeddings a document is stored but not searchable, so that is
- * reported as a warning rather than passed off as success. Analysis is
- * genuinely optional: it adds concepts, summaries and subject-specific extras,
- * and retrieval works without it.
+ * Without embeddings a document is stored but not searchable, which is reported
+ * as a warning rather than passed off as success.
  */
 
 import fs from 'fs/promises';
 import path from 'path';
-import { parseFile } from '../parser.js';
-import { chunkText } from './chunk.js';
+import { fileURLToPath } from 'url';
+import { chunkPages } from './chunk.js';
+import { parseDocument, detectIngestMode, textVolume } from './parse.js';
 import { renderExtractSchema } from '../subjects.js';
+import { assertValidSlug } from '../store/index.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.join(__dirname, '../../..');
 
 const ANALYSIS_CONCURRENCY = 8;
 const EMBED_BATCH = 128;
+
+/** Where original uploads live, so citations can link back to the real page. */
+export function documentsDir(slug) {
+  return path.join(REPO_ROOT, 'data/documents', assertValidSlug(slug));
+}
+
+/** Reject anything that would escape the subject's document directory. */
+export function safeFilename(filename) {
+  const base = path.basename(String(filename || '').trim());
+  if (!base || base === '.' || base === '..') throw new Error(`Invalid filename: ${filename}`);
+  return base;
+}
 
 /** The generic analysis core, plus whatever the subject asked for. */
 export function buildAnalysisPrompt(profile, chunk) {
@@ -49,17 +69,15 @@ export function buildAnalysisPrompt(profile, chunk) {
   ].filter(l => l !== '').join('\n');
 }
 
-/** Strip markdown fences and parse. Returns null rather than throwing. */
 function parseJsonLoose(text) {
   const raw = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try { return JSON.parse(raw); } catch { return null; }
 }
 
 /**
- * Analyse one chunk. Unlike the previous pipeline, a failure propagates so it
- * can be COUNTED — silently storing an empty analysis leaves a chunk invisible
- * to concept boosting and absent from the concept map, with nothing surfacing
- * how many were affected.
+ * Analyse one chunk. A failure propagates so it can be COUNTED — silently
+ * storing an empty analysis leaves a chunk invisible to concept boosting and
+ * absent from the concept map, with nothing reporting how many were affected.
  */
 async function analyseChunk(profile, chunk, client, model) {
   const res = await client.messages.create({
@@ -97,49 +115,59 @@ async function mapWithConcurrency(items, limit, fn) {
 /**
  * Ingest one document into a subject.
  *
- * Omit `analysisClient` to skip analysis; omit `embedder` to skip embedding
- * (the document is then stored but not searchable, and the result says so).
+ * `keepOriginal` copies the file into data/documents/<slug>/ for the page
+ * viewer. Pass false when ingesting in place from a path that already persists.
  */
 export async function ingestDocument({
   profile, store, embedder, analysisClient,
   filePath, filename = path.basename(filePath),
+  keepOriginal = true,
   onProgress = () => {},
 }) {
   const slug = profile.slug;
+  const safeName = safeFilename(filename);
   const warnings = [];
 
+  // ─── Parse ─────────────────────────────────────────────────────────────────
+  onProgress({ stage: 'parse', filename: safeName });
+  const { paged, pages } = await parseDocument(filePath, { ext: path.extname(safeName) });
+
+  // Detect a scan rather than storing an empty knowledge base and calling it
+  // success. This is the failure ask_cooter hit: 651 pages, ~0 extractable
+  // characters, and pdf-parse reports no error at all.
+  const detected = detectIngestMode(pages);
+  if (detected === 'vision') {
+    throw new Error(
+      `"${safeName}" has almost no extractable text (${textVolume(pages)} characters across ` +
+      `${pages.length} page(s)) — it is very likely a scan. Scanned documents need vision ` +
+      `ingestion, which is not implemented yet (ARCHITECTURE_PLAN.md Phase 4).`,
+    );
+  }
   if (profile.ingest.mode === 'vision') {
     throw new Error(
       `Subject "${slug}" is configured for vision ingestion, which is not implemented yet ` +
-      `(ARCHITECTURE_PLAN.md Phase 4). Scanned PDFs need per-page rendering plus a vision model. ` +
-      `Set ingest.mode to "text" if this document has extractable text.`,
+      `(ARCHITECTURE_PLAN.md Phase 4). Set ingest.mode to "text" to use this pipeline.`,
     );
   }
 
-  onProgress({ stage: 'parse', filename });
-  const text = await parseFile(filePath);
-  if (!text || !text.trim()) {
-    throw new Error(
-      `No extractable text in "${filename}". If this is a scanned PDF it needs vision ingestion ` +
-      `(Phase 4) — pdf-parse returns nothing for image-only pages.`,
-    );
-  }
+  // ─── Chunk ─────────────────────────────────────────────────────────────────
+  onProgress({ stage: 'chunk', filename: safeName });
+  const pieces = chunkPages(pages, profile.ingest);
+  if (pieces.length === 0) throw new Error(`"${safeName}" produced no chunks`);
 
-  onProgress({ stage: 'chunk', filename });
-  const pieces = chunkText(text, profile.ingest);
-  if (pieces.length === 0) throw new Error(`"${filename}" produced no chunks`);
-
-  let chunks = pieces.map((t, i) => ({
-    id: `${filename}::${i}`,
-    documentId: filename,
-    source: filename,
+  let chunks = pieces.map((p, i) => ({
+    id: `${safeName}::${i}`,
+    documentId: safeName,
+    source: safeName,
     chunkIndex: i,
-    text: t,
+    text: p.text,
     summary: '',
     difficulty: null,
     concepts: [],
     themes: [],
     extras: {},
+    pdfPage: p.pdfPage,
+    printedPage: p.printedPage,
   }));
 
   // ─── Analysis (optional) ───────────────────────────────────────────────────
@@ -147,16 +175,12 @@ export async function ingestDocument({
   let analysisFailed = 0;
   if (analysisClient) {
     const model = profile.analysis?.model || 'claude-haiku-4-5';
-    onProgress({ stage: 'analyse', filename, done: 0, total: chunks.length });
+    onProgress({ stage: 'analyse', filename: safeName, done: 0, total: chunks.length });
     const results = await mapWithConcurrency(chunks, ANALYSIS_CONCURRENCY, async (c) => {
       let r = null;
-      try {
-        r = await analyseChunk(profile, c, analysisClient, model);
-        analysed++;
-      } catch {
-        analysisFailed++;
-      }
-      onProgress({ stage: 'analyse', filename, done: analysed + analysisFailed, total: chunks.length });
+      try { r = await analyseChunk(profile, c, analysisClient, model); analysed++; }
+      catch { analysisFailed++; }
+      onProgress({ stage: 'analyse', filename: safeName, done: analysed + analysisFailed, total: chunks.length });
       return r;
     });
     chunks = chunks.map((c, i) => (results[i] ? { ...c, ...results[i] } : c));
@@ -171,24 +195,30 @@ export async function ingestDocument({
   let embedded = 0;
   if (embedder) {
     if (embedder.dim !== profile.embed.dim) {
-      throw new Error(
-        `Embedder produces ${embedder.dim} dims but subject "${slug}" is configured for ${profile.embed.dim}.`,
-      );
+      throw new Error(`Embedder produces ${embedder.dim} dims but subject "${slug}" expects ${profile.embed.dim}.`);
     }
-    onProgress({ stage: 'embed', filename, done: 0, total: chunks.length });
+    onProgress({ stage: 'embed', filename: safeName, done: 0, total: chunks.length });
     for (let i = 0; i < chunks.length; i += EMBED_BATCH) {
       const batch = chunks.slice(i, i + EMBED_BATCH);
       const vectors = await embedder.embedDocuments(batch.map(c => c.text));
       batch.forEach((c, j) => { c.embedding = vectors[j]; });
       embedded += batch.length;
-      onProgress({ stage: 'embed', filename, done: embedded, total: chunks.length });
+      onProgress({ stage: 'embed', filename: safeName, done: embedded, total: chunks.length });
     }
   } else {
-    warnings.push('No embedder available — the document is stored but NOT searchable until embeddings are built.');
+    warnings.push('No embedder available — stored but NOT searchable until embeddings are built.');
+  }
+
+  // ─── Keep the original, so citations can open the real page ────────────────
+  if (keepOriginal) {
+    const dir = documentsDir(slug);
+    await fs.mkdir(dir, { recursive: true });
+    const dest = path.join(dir, safeName);
+    if (path.resolve(dest) !== path.resolve(filePath)) await fs.copyFile(filePath, dest);
   }
 
   // ─── Store ─────────────────────────────────────────────────────────────────
-  onProgress({ stage: 'store', filename, total: chunks.length });
+  onProgress({ stage: 'store', filename: safeName, total: chunks.length });
   await store.initSubject(slug, {
     dim: profile.embed.dim,
     embedModel: profile.embed.model,
@@ -198,7 +228,9 @@ export async function ingestDocument({
 
   return {
     subject: slug,
-    filename,
+    filename: safeName,
+    paged,
+    pages: pages.length,
     chunks: chunks.length,
     analysed,
     analysisFailed,
@@ -215,11 +247,8 @@ export async function ingestDirectory({ dir, ...rest }) {
   for (const file of files) {
     const full = path.join(dir, file);
     if (!(await fs.stat(full)).isFile()) continue;
-    try {
-      results.push(await ingestDocument({ ...rest, filePath: full, filename: file }));
-    } catch (err) {
-      results.push({ filename: file, error: err.message });
-    }
+    try { results.push(await ingestDocument({ ...rest, filePath: full, filename: file })); }
+    catch (err) { results.push({ filename: file, error: err.message }); }
   }
   return results;
 }

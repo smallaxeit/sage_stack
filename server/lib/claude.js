@@ -62,6 +62,9 @@ export function buildContext(profile, results) {
     if (!sourceMap.has(r.source)) {
       sourceMap.set(r.source, {
         source: friendlySourceName(profile, r.source),
+        // Raw filename too: the friendly title is for reading, this is what the
+        // page viewer needs to fetch the actual document.
+        filename: r.source,
         page: r.pdfPage == null ? null : r.pdfPage + 1,
         printedPage: r.printedPage ?? null,
         preview: r.text.slice(0, 160).replace(/\n/g, ' '),

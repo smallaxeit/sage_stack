@@ -333,6 +333,41 @@ export function createFilesStore(opts = {}) {
       try { await fs.unlink(sessionFile(id)); return true; } catch { return false; }
     },
 
+    /**
+     * Remove chunks by id. The dense layout means surviving rows must be
+     * compacted and reindexed, so this rebuilds the vector block rather than
+     * leaving holes that would silently shift every later chunk row.
+     */
+    async deleteChunks(slug, ids) {
+      const state = await load(slug);
+      if (!state) return 0;
+      const dim = state.meta.dim;
+      const doomed = new Set(ids.map(String));
+      if (doomed.size === 0) return 0;
+
+      const keep = [];
+      for (let i = 0; i < state.chunks.length; i++) {
+        if (!doomed.has(state.chunks[i].id)) keep.push(i);
+      }
+      const removed = state.chunks.length - keep.length;
+      if (removed === 0) return 0;
+
+      const vectors = new Float32Array(keep.length * dim);
+      const norms = new Float64Array(keep.length);
+      keep.forEach((oldRow, newRow) => {
+        vectors.set(state.vectors.subarray(oldRow * dim, (oldRow + 1) * dim), newRow * dim);
+        norms[newRow] = state.norms[oldRow];
+      });
+
+      state.chunks = keep.map(i => state.chunks[i]);
+      state.vectors = vectors;
+      state.norms = norms;
+      state.index = new Map(state.chunks.map((c, i) => [c.id, i]));
+
+      await persist(slug, state);
+      return removed;
+    },
+
     async close() { cache.clear(); },
   };
 
