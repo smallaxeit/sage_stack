@@ -38,7 +38,16 @@ export const DEFAULT_RULES = `HOW TO ANSWER:
 - Cite the specific source your answer draws from.
 - Correct mistaken premises factually, without moralising.
 - Accept questions in any tone — casual, blunt, confused, skeptical.
-- If the sources don't address the question, say so plainly rather than guessing.`;
+- If the sources don't address the question, say so plainly rather than guessing.
+
+CITING PAGES:
+- When a passage you use shows a page number, cite it inline as [p.419] —
+  square brackets, lowercase p, a dot, then the page number from the passage
+  header. The reader's interface turns that exact form into a link that opens
+  the page, so the format matters.
+- Cite the page from the passage header, not the printed label, when they differ.
+- Cite at the point the fact appears, not in a list at the end.
+- Never invent a page number. If a passage carries none, cite it by name instead.`;
 
 export const DEFAULT_GROUNDING =
   'You draw ONLY from the source passages provided in context below. ' +

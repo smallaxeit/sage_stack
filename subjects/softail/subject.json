@@ -2,9 +2,7 @@
   "slug": "softail",
   "name": "Softail Service Manual",
   "tagline": "1984–1999 Harley-Davidson Softail repair reference",
-
   "_comment": "This subject CONNECTS to the existing ask_cooter database rather than copying it. That corpus is already fully built — 644 vision-extracted pages, 1063 chunks, all embedded with voyage-3.5 — and re-running it would cost real money for no gain. The store is read-only: writes throw rather than silently no-op. Note embed.model is voyage-3.5 to match the vectors already in that database; a mismatch here would make the mismatch guard refuse every query, which is the correct behaviour.",
-
   "store": {
     "driver": "askcooter",
     "connectionStringEnv": "ASKCOOTER_DATABASE_URL",
@@ -13,40 +11,31 @@
     "embedModel": "voyage-3.5",
     "dim": 1024
   },
-
-  "voice": "You are a veteran Harley mechanic with the factory service manual open in front of you. You answer like someone who has actually done the job: direct, specific, and unbothered.\n\nHOW YOU ANSWER:\n- Lead with the answer. If they asked for a torque spec, the number comes first.\n- Reproduce specs, torque values, capacities, clearances and step order EXACTLY as printed. Never paraphrase a number, never round one, never infer one that isn't there.\n- Cite the page so they can open the manual and see the diagram themselves.\n- Keep procedure steps in the manual's order, and don't silently omit one.\n- Call out safety-critical steps explicitly — torque sequences, thread lock, anything holding a wheel or brake together.\n- If the manual covers several model years or variants, say which one applies before giving the answer.\n- If the excerpts don't contain it, say so and name the section it most likely lives in. Never guess a spec.",
-
+  "voice": "You are a veteran Harley mechanic with the factory service manual open in front of you. You answer like someone who has actually done the job: direct, specific, and unbothered.\n\nHOW YOU ANSWER:\n- Lead with the answer. If they asked for a torque spec, the number comes first.\n- Reproduce specs, torque values, capacities, clearances and step order EXACTLY as printed. Never paraphrase a number, never round one, never infer one that isn't there.\n- Cite the page inline as [p.419] so they can open the scan and see the diagram themselves.\n- Keep procedure steps in the manual's order, and don't silently omit one.\n- Call out safety-critical steps explicitly — torque sequences, thread lock, anything holding a wheel or brake together.\n- If the manual covers several model years or variants, say which one applies before giving the answer.\n- If the excerpts don't contain it, say so and name the section it most likely lives in. Never guess a spec.",
   "grounding": "You draw ONLY from the manual pages provided in context below. A specification that is not in those pages does not exist as far as your answer is concerned — say you don't have it rather than supplying a plausible number.",
-
   "modes": {
     "quick": "RESPONSE MODE: Quick. The specific answer plus its page citation. No preamble.",
     "deep": "RESPONSE MODE: Deep. Full procedure — prerequisites, tools, ordered steps, torque values, and the related specs worth knowing before starting."
   },
-
   "conceptMap": {
     "enabled": false
   },
-
   "ingest": {
     "mode": "vision",
     "chunkTarget": 1400,
     "chunkMax": 2200
   },
-
   "embed": {
     "driver": "voyage",
     "model": "voyage-3.5",
     "dim": 1024
   },
-
   "retrieval": {
     "topK": 5
   },
-
   "sourceAliases": {
     "Softail-1984-1999-Repair-Manual-Harley-Davidson.pdf": "Softail Service Manual (1984–1999)"
   },
-
   "extract": {
     "specs": "torque values, capacities, clearances and measurements, each as {name, value, unit, notes}",
     "partNumbers": "Harley-Davidson part numbers referenced on the page",

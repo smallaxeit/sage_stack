@@ -1,230 +1,241 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import Message from './Message';
 
-const WELCOME = {
-  role: 'assistant',
-  content: "Grace and peace to you, friend. 🙏\n\nWhat's on your mind today? Is there a passage, a concept, or a question about the faith you'd like to explore?",
-};
+/**
+ * Chat, in ask_cooter's shape.
+ *
+ * The differences from the old SageStack chat that actually matter:
+ *  - full width, not a narrow centred column: manual passages and tables need it
+ *  - a textarea, not an input — Enter sends, Shift+Enter is a newline, and it
+ *    grows to a cap instead of scrolling one line at a time
+ *  - a Stop button, because a long streamed answer you no longer want should be
+ *    abandonable without reloading
+ *  - suggestions on the empty state, so a new knowledge area is not a blank box
+ */
 
-export default function Chat({ ready, subject, onOpenDoc }) {
-  const [messages, setMessages] = useState([WELCOME]);
+const DEFAULT_SUGGESTIONS = [
+  'What is this collection about?',
+  'Summarise the main themes.',
+  'What topics can I ask about?',
+];
+
+export default function Chat({ ready, subject, subjectName, suggestions, onOpenDoc, onOpenCite }) {
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState(() => localStorage.getItem('ss-mode') || 'deep');
   const [sessionId, setSessionId] = useState(null);
-  const [mode, setMode] = useState('quick');
-  const bottomRef = useRef(null);
-  const inputRef = useRef(null);
-  const scrollRef = useRef(null);
-  const isStreamingRef = useRef(false);
-  const forceScrollRef = useRef(false);
 
-  useEffect(() => {
-    const el = scrollRef.current;
+  const logRef = useRef(null);
+  const taRef = useRef(null);
+  const abortRef = useRef(null);
+
+  useEffect(() => { localStorage.setItem('ss-mode', mode); }, [mode]);
+
+  // A conversation belongs to one subject; switching starts a fresh one.
+  useEffect(() => { setMessages([]); setSessionId(null); }, [subject]);
+
+  const scrollDown = useCallback(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  useEffect(scrollDown, [messages, scrollDown]);
+
+  function autoGrow(el) {
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (forceScrollRef.current || distanceFromBottom < 120) {
-      bottomRef.current?.scrollIntoView({ behavior: isStreamingRef.current ? 'instant' : 'smooth' });
-      forceScrollRef.current = false;
-    }
-  }, [messages, loading]);
+    el.style.height = 'auto';
+    el.style.height = Math.min(180, el.scrollHeight) + 'px';
+  }
 
-  async function send(overrideText) {
-    const text = (overrideText || input).trim();
-    if (!text || loading || !ready) return;
+  const send = useCallback(async (text) => {
+    const q = String(text ?? '').trim();
+    if (!q || busy) return;
 
     setInput('');
-    forceScrollRef.current = true;
-    setMessages(prev => [...prev, { role: 'user', content: text }]);
-    setLoading(true);
-    isStreamingRef.current = false;
+    if (taRef.current) { taRef.current.style.height = 'auto'; }
+    setMessages(m => [...m, { role: 'user', content: q }, { role: 'assistant', content: '', streaming: true }]);
+    setBusy(true);
 
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-    isStreamingRef.current = true;
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, mode, subject }),
+        body: JSON.stringify({ message: q, sessionId, mode, subject }),
+        signal: ctrl.signal,
       });
 
-      if (!res.ok) throw new Error('Request failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Request failed (${res.status})`);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buf = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
+      for (;;) {
+        const { value, done } = await reader.read();
         if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const frames = buf.split('\n\n');
+        buf = frames.pop();
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
+        for (const frame of frames) {
+          if (!frame.startsWith('data: ')) continue;
+          const ev = JSON.parse(frame.slice(6));
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = JSON.parse(line.slice(6));
-
-          if (data.chunk) {
-            setMessages(prev => {
-              const msgs = [...prev];
-              msgs[msgs.length - 1] = {
-                ...msgs[msgs.length - 1],
-                content: msgs[msgs.length - 1].content + data.chunk,
-              };
-              return msgs;
+          if (ev.chunk) {
+            setMessages(m => {
+              const next = [...m];
+              const last = next[next.length - 1];
+              next[next.length - 1] = { ...last, content: last.content + ev.chunk };
+              return next;
             });
-          } else if (data.done) {
-            setSessionId(data.sessionId);
-            setMessages(prev => {
-              const msgs = [...prev];
-              msgs[msgs.length - 1] = {
-                ...msgs[msgs.length - 1],
-                sources: data.sources || [],
-                chips: data.chips || [],
+          } else if (ev.error) {
+            setMessages(m => {
+              const next = [...m];
+              next[next.length - 1] = {
+                ...next[next.length - 1],
+                content: (next[next.length - 1].content || '') + `\n\n**${ev.error}**`,
+                streaming: false,
               };
-              return msgs;
+              return next;
             });
-          } else if (data.error) {
-            throw new Error(data.error);
+          } else if (ev.done) {
+            setSessionId(ev.sessionId);
+            setMessages(m => {
+              const next = [...m];
+              next[next.length - 1] = {
+                ...next[next.length - 1],
+                sources: ev.sources || [],
+                chips: ev.chips || [],
+                streaming: false,
+              };
+              return next;
+            });
           }
         }
       }
     } catch (err) {
-      const fallback = "Sage is on retreat. The scrolls will be available again shortly.";
-      setMessages(prev => {
-        const msgs = [...prev];
-        msgs[msgs.length - 1] = { role: 'assistant', content: fallback };
-        return msgs;
+      const aborted = err.name === 'AbortError';
+      setMessages(m => {
+        const next = [...m];
+        const last = next[next.length - 1];
+        next[next.length - 1] = {
+          ...last,
+          content: last.content + (aborted ? '\n\n*(stopped)*' : `\n\n**${err.message}**`),
+          streaming: false,
+        };
+        return next;
       });
     } finally {
-      isStreamingRef.current = false;
-      setLoading(false);
-      inputRef.current?.focus();
+      setBusy(false);
+      abortRef.current = null;
+      setMessages(m => m.map(x => (x.streaming ? { ...x, streaming: false } : x)));
     }
-  }
+  }, [busy, sessionId, mode, subject]);
 
-  function handleKey(e) {
+  function onKeyDown(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      send();
+      send(input);
     }
   }
 
-  async function reset() {
+  async function newChat() {
     if (sessionId) {
-      await fetch(`/api/chat/${sessionId}?subject=${encodeURIComponent(subject || '')}`, { method: 'DELETE' });
+      await fetch(`/api/chat/${sessionId}?subject=${encodeURIComponent(subject || '')}`, { method: 'DELETE' })
+        .catch(() => {});
     }
+    setMessages([]);
     setSessionId(null);
-    setMessages([WELCOME]);
-    setInput('');
-    inputRef.current?.focus();
+    taRef.current?.focus();
   }
+
+  const tips = suggestions?.length ? suggestions : DEFAULT_SUGGESTIONS;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
-        {messages.map((msg, i) => (
-          <Message
-            key={i}
-            role={msg.role}
-            content={msg.content}
-            sources={msg.sources}
-            chips={msg.chips}
-            onChipClick={(chip) => send(`Tell me more about: ${chip}`)}
-            onOpenDoc={onOpenDoc}
-          />
-        ))}
-
-        {loading && (
-          <div className="flex justify-start mb-4">
-            <div className="w-8 h-8 rounded-full bg-blue-950 border border-blue-700/40 flex items-center justify-center text-sm font-bold text-blue-300 mr-3 mt-1 shrink-0">
-              T
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div ref={logRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <div style={{ padding: '20px 40px 8px' }}>
+          {messages.length === 0 ? (
+            <div style={{ color: 'var(--muted)', textAlign: 'center', margin: '10vh auto 0', maxWidth: 560 }}>
+              <h2 style={{ color: 'var(--ink)', fontSize: 19, margin: '0 0 6px' }}>
+                Ask about {subjectName || 'this collection'}
+              </h2>
+              <div>
+                {ready
+                  ? 'Grounded in the loaded sources. Every answer cites the page you can open to check it.'
+                  : 'This knowledge area is not searchable yet — load documents and build embeddings first.'}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 18 }}>
+                {tips.map(t => (
+                  <button key={t} className="chip" onClick={() => send(t)} disabled={!ready}>{t}</button>
+                ))}
+              </div>
             </div>
-            <div className="bg-stone-800 border border-stone-700 px-4 py-3 rounded-2xl rounded-bl-sm">
-              <span className="flex gap-1 items-center h-5">
-                <span className="w-2 h-2 bg-yellow-600 rounded-full animate-bounce [animation-delay:0ms]" />
-                <span className="w-2 h-2 bg-yellow-600 rounded-full animate-bounce [animation-delay:150ms]" />
-                <span className="w-2 h-2 bg-yellow-600 rounded-full animate-bounce [animation-delay:300ms]" />
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div ref={bottomRef} />
+          ) : (
+            messages.map((m, i) => (
+              <Message
+                key={i}
+                role={m.role}
+                content={m.content}
+                sources={m.sources}
+                chips={m.chips}
+                streaming={m.streaming}
+                onChipClick={(chip) => send(`Tell me more about: ${chip}`)}
+                onOpenDoc={onOpenDoc}
+                onOpenCite={onOpenCite}
+              />
+            ))
+          )}
+        </div>
       </div>
 
-      {/* Input */}
-      <div className="px-4 py-4" style={{ borderTop: '1px solid var(--border)' }}>
-        {!ready && (
-          <p className="text-center text-sm text-slate-400 mb-3">
-            Knowledge base not ready. Run <code className="bg-blue-950/60 px-1 rounded text-blue-300">npm run build:knowledge</code> first.
-          </p>
-        )}
-
-        {/* Mode toggle */}
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs" style={{ color: 'var(--toggle-inactive-text)' }}>Depth:</span>
-          <button
-            onClick={() => setMode('quick')}
-            className="text-xs px-2.5 py-1 rounded-lg border transition-colors"
-            style={mode === 'quick'
-              ? { background: 'var(--toggle-active-bg)', border: '1px solid var(--toggle-active-border)', color: 'var(--toggle-active-text)' }
-              : { background: 'transparent', border: '1px solid transparent', color: 'var(--toggle-inactive-text)' }
-            }
-          >
-            ⚡ Quick
-          </button>
-          <button
-            onClick={() => setMode('deep')}
-            className="text-xs px-2.5 py-1 rounded-lg border transition-colors"
-            style={mode === 'deep'
-              ? { background: 'var(--toggle-active-bg)', border: '1px solid var(--toggle-active-border)', color: 'var(--toggle-active-text)' }
-              : { background: 'transparent', border: '1px solid transparent', color: 'var(--toggle-inactive-text)' }
-            }
-          >
-            🔬 Deep
-          </button>
-        </div>
-
-        <div className="flex gap-3 items-end">
+      <footer style={{ borderTop: '1px solid var(--line)', background: 'var(--panel)' }}>
+        <form
+          onSubmit={(e) => { e.preventDefault(); send(input); }}
+          style={{ padding: '12px 40px', display: 'flex', gap: 10, alignItems: 'flex-end' }}
+        >
           <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            disabled={!ready || loading}
-            placeholder={ready ? 'Ask a question or share a thought…' : 'Waiting for knowledge base…'}
+            ref={taRef}
+            className="ask"
             rows={1}
-            className="flex-1 resize-none rounded-xl px-4 py-3 text-sm focus:outline-none disabled:opacity-50 max-h-32 overflow-y-auto"
-            style={{
-              background: 'var(--input-bg)',
-              border: '1px solid var(--input-border)',
-              color: 'var(--text-primary)',
-              fieldSizing: 'content',
-            }}
+            value={input}
+            placeholder={ready ? 'Ask a question…  (Enter to send, Shift+Enter for a new line)' : 'Not searchable yet'}
+            onChange={(e) => { setInput(e.target.value); autoGrow(e.target); }}
+            onKeyDown={onKeyDown}
+            disabled={!ready}
+            autoFocus
           />
-          <button
-            onClick={() => send()}
-            disabled={!ready || loading || !input.trim()}
-            className="disabled:opacity-40 disabled:cursor-not-allowed font-medium rounded-xl px-4 py-3 text-sm transition-colors"
-            style={{ background: 'var(--avatar-bg)', color: 'var(--text-primary)', border: '1px solid var(--input-border)' }}
-          >
-            Send
-          </button>
-          <button
-            onClick={reset}
-            title="New session"
-            className="rounded-xl px-3 py-3 text-sm transition-colors"
-            style={{ background: 'var(--avatar-bg)', color: 'var(--text-secondary)', border: '1px solid var(--input-border)' }}
-          >
-            ↺
-          </button>
+          {busy ? (
+            <button type="button" className="btn" onClick={() => abortRef.current?.abort()}>Stop</button>
+          ) : (
+            <button type="submit" className="btn primary" disabled={!ready || !input.trim()}>Ask</button>
+          )}
+        </form>
+
+        <div style={{ padding: '0 40px 10px', fontSize: 11.5, color: 'var(--muted)', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span>Answers come from retrieved passages and cite their source page.</span>
+          <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              type="button"
+              className={`btn icon ${mode === 'quick' ? 'active' : ''}`}
+              onClick={() => setMode('quick')}
+            >Quick</button>
+            <button
+              type="button"
+              className={`btn icon ${mode === 'deep' ? 'active' : ''}`}
+              onClick={() => setMode('deep')}
+            >Deep</button>
+            <button type="button" className="btn icon" onClick={newChat}>New chat</button>
+          </span>
         </div>
-        <p className="text-xs mt-2 text-center" style={{ color: 'var(--text-muted)' }}>Press Enter to send · Shift+Enter for new line</p>
-      </div>
+      </footer>
     </div>
   );
 }

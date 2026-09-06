@@ -1,21 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Chat from './components/Chat';
-import AdminPanel from './components/AdminPanel';
 import KnowledgePanel from './components/KnowledgePanel';
 import PageViewer from './components/PageViewer';
 
-const THEMES = ['dark', 'light'];
-const THEME_ICONS = { dark: '🌙', light: '☀️' };
-const THEME_LABELS = { dark: 'Dark', light: 'Light' };
+/**
+ * Shell, in ask_cooter's layout: a thin header, a collapsible left sidebar, and
+ * the working area filling everything else.
+ *
+ * The sidebar lists knowledge areas rather than chat history, because subjects
+ * are tenants here — switching one is the most consequential thing you can do,
+ * so it belongs somewhere permanent rather than behind a menu.
+ */
 
 export default function App() {
   const [status, setStatus] = useState(null);
   const [subject, setSubject] = useState(() => localStorage.getItem('ss-subject') || null);
-  const [view, setView] = useState('chat');            // 'chat' | 'knowledge'
-  const [openDoc, setOpenDoc] = useState(null);        // { filename, page, printedPage, excerpt }
-  const [buildProgress, setBuildProgress] = useState(null);
+  const [view, setView] = useState('chat');
+  const [openDoc, setOpenDoc] = useState(null);
+  const [sidebar, setSidebar] = useState(() => localStorage.getItem('ss-sidebar') !== 'closed');
   const [theme, setTheme] = useState(() => localStorage.getItem('ss-theme') || 'dark');
-  const [adminOpen, setAdminOpen] = useState(false);
+  const [docs, setDocs] = useState([]);
   const pollRef = useRef(null);
 
   useEffect(() => {
@@ -23,13 +27,8 @@ export default function App() {
     localStorage.setItem('ss-theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    if (subject) localStorage.setItem('ss-subject', subject);
-  }, [subject]);
-
-  function cycleTheme() {
-    setTheme(t => THEMES[(THEMES.indexOf(t) + 1) % THEMES.length]);
-  }
+  useEffect(() => { if (subject) localStorage.setItem('ss-subject', subject); }, [subject]);
+  useEffect(() => { localStorage.setItem('ss-sidebar', sidebar ? 'open' : 'closed'); }, [sidebar]);
 
   const refreshStatus = useCallback(() => {
     const url = subject ? `/api/status?subject=${encodeURIComponent(subject)}` : '/api/status';
@@ -37,7 +36,6 @@ export default function App() {
       .then(r => r.json())
       .then(s => {
         setStatus(s);
-        // Adopt a subject on first load so every later call is explicitly scoped.
         if (!subject && s.subjects?.length) setSubject(s.subjects[0].slug);
         return s;
       })
@@ -46,132 +44,154 @@ export default function App() {
 
   useEffect(() => { refreshStatus(); }, [refreshStatus]);
 
+  // Documents drive both the sidebar counts and the citation viewer's fallback.
+  const refreshDocs = useCallback(() => {
+    if (!subject) return;
+    fetch(`/api/documents/${subject}`)
+      .then(r => r.json())
+      .then(d => setDocs(d.documents || []))
+      .catch(() => setDocs([]));
+  }, [subject]);
+
+  useEffect(() => { refreshDocs(); }, [refreshDocs]);
+
   useEffect(() => {
     function poll() {
       fetch('/api/build-progress')
         .then(r => r.json())
         .then(p => {
-          setBuildProgress(p);
-          if (p.status === 'running' || p.status === 'starting') {
-            pollRef.current = setTimeout(poll, 3000);
-          } else if (p.status === 'done') {
-            refreshStatus();
-          }
+          if (p.status === 'running' || p.status === 'starting') pollRef.current = setTimeout(poll, 3000);
+          else if (p.status === 'done') { refreshStatus(); refreshDocs(); }
         })
         .catch(() => {});
     }
     poll();
     return () => clearTimeout(pollRef.current);
-  }, [refreshStatus]);
+  }, [refreshStatus, refreshDocs]);
 
   const subjects = status?.subjects || [];
   const current = subjects.find(s => s.slug === subject);
-  const ready = current?.ready ?? status?.ready ?? false;
-  const wide = view === 'knowledge';
+  const ready = current?.ready ?? false;
+
+  /**
+   * An inline [p.N] citation names a page but not a document. With one source
+   * loaded that is unambiguous; with several, the largest is the best guess and
+   * the reader can switch documents in the viewer.
+   */
+  const openCitation = useCallback((page) => {
+    const doc = docs.find(d => d.ingested) || docs[0];
+    if (!doc) return;
+    setOpenDoc({ filename: doc.filename, title: doc.filename, page });
+  }, [docs]);
 
   return (
-    <div className={`flex flex-col h-svh mx-auto w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'}`}>
-      <header className="px-6 py-4 shrink-0" style={{ borderBottom: '1px solid var(--header-border)', background: 'var(--header-bg)' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <img src="/avatar.png" alt="Sage" className="w-10 h-10 rounded-full object-cover shadow-lg" style={{ border: '1px solid var(--header-icon-border)' }} />
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold leading-none truncate" style={{ color: 'var(--header-text)' }}>
-                {current?.name || 'SageStack'}
-              </h1>
-              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--header-subtext)' }}>
-                {current
-                  ? (current.ready
-                      ? `${current.chunks.toLocaleString()} chunks · ${current.embedModel || 'no model recorded'}`
-                      : current.chunks > 0
-                        ? `${current.chunks.toLocaleString()} chunks — not embedded, so not searchable`
-                        : 'no knowledge loaded yet')
-                  : 'from scripture to social contract'}
-              </p>
-            </div>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100svh' }}>
+      <header style={{
+        padding: '10px 16px', borderBottom: '1px solid var(--line)', background: 'var(--panel)',
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0,
+      }}>
+        <button className="btn icon" onClick={() => setSidebar(s => !s)} title="Knowledge areas">☰</button>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <span className={`w-2 h-2 rounded-full ${ready ? 'bg-emerald-500' : 'bg-slate-500'}`} />
-
-            <button
-              onClick={() => setView(v => (v === 'chat' ? 'knowledge' : 'chat'))}
-              className="text-xs px-2.5 py-1 rounded-lg transition-colors"
-              style={{ border: '1px solid var(--header-icon-border)', color: 'var(--header-meta)' }}
-            >
-              {view === 'chat' ? '📚 Knowledge' : '💬 Chat'}
-            </button>
-
-            <button
-              onClick={cycleTheme}
-              title={`Switch theme (${THEME_LABELS[theme]})`}
-              className="text-sm px-2 py-1 rounded-lg transition-colors"
-              style={{ border: '1px solid var(--header-icon-border)', color: 'var(--header-meta)' }}
-            >
-              {THEME_ICONS[theme]}
-            </button>
-
-            <button
-              onClick={() => setAdminOpen(true)}
-              title="Admin panel"
-              className="text-xs px-2.5 py-1 rounded-lg transition-colors"
-              style={{ border: '1px solid var(--header-icon-border)', color: 'var(--header-meta)' }}
-            >
-              ⚙
-            </button>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginRight: 'auto', minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 17, letterSpacing: '.2px' }}>
+            {current?.name || 'SageStack'}
+          </h1>
+          <span style={{ color: 'var(--muted)', fontSize: 12.5 }}>
+            {current
+              ? (current.ready
+                  ? `${current.chunks.toLocaleString()} chunks · ${current.embedModel || 'model unknown'}`
+                  : current.chunks > 0
+                    ? `${current.chunks.toLocaleString()} chunks — not embedded`
+                    : 'nothing loaded')
+              : 'from scripture to social contract'}
+          </span>
         </div>
 
-        {(buildProgress?.status === 'running' || buildProgress?.status === 'starting') && (
-          <div className="mt-3">
-            <div className="flex justify-between text-xs mb-1" style={{ color: '#7d8590' }}>
-              <span>
-                {buildProgress.phase === 'concept-map'
-                  ? 'Building concept map…'
-                  : `Analyzing sources — ${buildProgress.current?.toLocaleString()} / ${buildProgress.total?.toLocaleString()} chunks`}
-              </span>
-              <span>
-                {buildProgress.pct}%
-                {buildProgress.remainingMins > 0 ? ` · ~${
-                  buildProgress.remainingMins >= 60
-                    ? `${Math.floor(buildProgress.remainingMins / 60)}h ${buildProgress.remainingMins % 60}m`
-                    : `${buildProgress.remainingMins}m`
-                } left` : ''}
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--progress-track)' }}>
-              <div className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${buildProgress.pct || 0}%`, background: 'var(--progress-fill)' }} />
-            </div>
-          </div>
-        )}
+        <button
+          className={`btn ${view === 'chat' ? 'active' : ''}`}
+          onClick={() => setView('chat')}
+        >Chat</button>
+        <button
+          className={`btn ${view === 'knowledge' ? 'active' : ''}`}
+          onClick={() => setView('knowledge')}
+        >Knowledge</button>
+        <button
+          className="btn icon"
+          onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
+          title="Toggle theme"
+        >◐</button>
       </header>
 
-      <main className="flex-1 overflow-hidden">
-        {view === 'chat' ? (
-          <Chat
-            ready={ready}
-            subject={subject}
-            onOpenDoc={setOpenDoc}
-          />
-        ) : (
-          <KnowledgePanel
-            subject={subject}
-            subjects={subjects}
-            onSubjectChange={(s) => { setSubject(s); setOpenDoc(null); }}
-            onOpenDoc={setOpenDoc}
-          />
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        {sidebar && (
+          <aside style={{
+            width: 250, flex: 'none', borderRight: '1px solid var(--line)',
+            background: 'var(--panel)', display: 'flex', flexDirection: 'column', minHeight: 0,
+          }}>
+            <div className="side-head"><span>Knowledge areas</span></div>
+            <div style={{ overflowY: 'auto', padding: '4px 8px 12px' }}>
+              {subjects.length === 0 && (
+                <p style={{ color: 'var(--muted)', fontSize: 12.5, padding: '8px 10px' }}>
+                  No subjects defined.
+                </p>
+              )}
+              {subjects.map(s => (
+                <button
+                  key={s.slug}
+                  className={`hist ${s.slug === subject ? 'active' : ''}`}
+                  onClick={() => { setSubject(s.slug); setOpenDoc(null); }}
+                  title={s.storeError || `${s.chunks} chunks via ${s.storeDriver}`}
+                  style={{ whiteSpace: 'normal' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{
+                      width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                      background: s.ready ? '#3fb950' : s.chunks > 0 ? '#d29922' : 'var(--muted)',
+                    }} />
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 13 }}>
+                    {s.chunks > 0 ? `${s.chunks.toLocaleString()} chunks` : 'empty'}
+                    {s.readOnly ? ' · read-only' : ''}
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {status?.errors?.length > 0 && (
+              <div style={{ padding: '8px 12px', borderTop: '1px solid var(--line)', fontSize: 11.5, color: '#d29922' }}>
+                {status.errors.map(e => <div key={e.slug}>⚠ {e.slug}: {e.error}</div>)}
+              </div>
+            )}
+
+            <div style={{ marginTop: 'auto', padding: '10px 12px', borderTop: '1px solid var(--line)', fontSize: 11.5, color: 'var(--muted)' }}>
+              store: {status?.store || '—'}
+            </div>
+          </aside>
         )}
-      </main>
+
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          {view === 'chat' ? (
+            <Chat
+              ready={ready}
+              subject={subject}
+              subjectName={current?.name}
+              onOpenDoc={setOpenDoc}
+              onOpenCite={openCitation}
+            />
+          ) : (
+            <KnowledgePanel
+              subject={subject}
+              current={current}
+              docs={docs}
+              onRefresh={() => { refreshStatus(); refreshDocs(); }}
+              onOpenDoc={setOpenDoc}
+            />
+          )}
+        </main>
+      </div>
 
       <PageViewer subject={subject} doc={openDoc} onClose={() => setOpenDoc(null)} />
-
-      <AdminPanel
-        open={adminOpen}
-        onClose={() => setAdminOpen(false)}
-        buildProgress={buildProgress}
-        subject={subject}
-      />
     </div>
   );
 }
