@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Chat from './components/Chat';
 import KnowledgePanel from './components/KnowledgePanel';
+import DocumentBrowser from './components/DocumentBrowser';
 import PageViewer from './components/PageViewer';
 import AdminPanel from './components/AdminPanel';
 
@@ -160,6 +161,10 @@ export default function App() {
           onClick={() => setView('chat')}
         >Chat</button>
         <button
+          className={`btn ${view === 'documents' ? 'active' : ''}`}
+          onClick={() => setView('documents')}
+        >Documents</button>
+        <button
           className={`btn ${view === 'knowledge' ? 'active' : ''}`}
           onClick={() => setView('knowledge')}
         >Knowledge</button>
@@ -264,7 +269,9 @@ export default function App() {
         )}
 
         <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {view === 'chat' ? (
+          {view === 'documents' ? (
+            <DocumentBrowser subject={subject} docs={docs} onOpenDoc={setOpenDoc} />
+          ) : view === 'chat' ? (
             <Chat
               ready={ready}
               subject={subject}
