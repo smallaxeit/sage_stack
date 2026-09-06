@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
- * KnowledgePanel — what the bot actually knows, and how to add to it.
+ * What the knowledge base actually contains, and how to add to it.
  *
- * Two things it deliberately does NOT do:
+ * It keeps three states apart that are easy to conflate, because collapsing
+ * them is how you end up asking questions of a base that cannot answer:
  *
- *  - It does not report "ready" from the presence of a file. A document can be
- *    on disk but not ingested, or ingested but not embedded (and therefore not
- *    searchable at all). Those states are shown separately, because conflating
- *    them is how you end up asking questions of an empty knowledge base.
- *  - It does not hide ingestion warnings. If analysis or embedding was skipped
- *    for want of an API key, that is the single most useful thing on screen.
+ *   on disk    a file exists
+ *   ingested   it was parsed into chunks
+ *   embedded   those chunks are searchable
+ *
+ * Only the third makes a document usable, so a subject with chunks and no
+ * embeddings gets a warning naming the fix rather than a green tick.
  */
 
 const fmtBytes = (n) => {
@@ -22,71 +23,58 @@ const fmtBytes = (n) => {
 
 function Stat({ label, value, tone }) {
   return (
-    <div className="rounded-lg px-3 py-2 flex-1 min-w-24"
-      style={{ background: 'var(--source-bg)', border: '1px solid var(--source-border)' }}>
-      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{label}</p>
-      <p className="text-lg font-semibold" style={{ color: tone || 'var(--text-primary)' }}>{value}</p>
+    <div style={{
+      background: 'var(--panel)', border: '1px solid var(--line)',
+      borderRadius: 10, padding: '10px 14px', flex: '1 1 140px',
+    }}>
+      <div className="label-mini">{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 600, color: tone || 'var(--ink)', marginTop: 2 }}>{value}</div>
     </div>
   );
 }
 
-export default function KnowledgePanel({ subject, subjects, onSubjectChange, onOpenDoc, adminKey }) {
-  const [docs, setDocs] = useState([]);
-  const [stats, setStats] = useState(null);
+export default function KnowledgePanel({ subject, current, docs = [], onRefresh, onOpenDoc }) {
   const [expanded, setExpanded] = useState(null);
   const [chunks, setChunks] = useState({});
-  const [upload, setUpload] = useState(null);   // { filename, stage, done, total, warnings, error }
+  const [sections, setSections] = useState([]);
+  const [upload, setUpload] = useState(null);
   const [dragging, setDragging] = useState(false);
-  const [error, setError] = useState(null);
   const fileInput = useRef(null);
 
-  const load = useCallback(async () => {
+  const readOnly = !!current?.readOnly;
+
+  useEffect(() => {
+    setExpanded(null);
+    setChunks({});
     if (!subject) return;
-    setError(null);
-    try {
-      const [d, s] = await Promise.all([
-        fetch(`/api/documents/${subject}`).then(r => r.json()),
-        fetch(`/api/admin/stats?subject=${subject}`, { headers: adminKey ? { 'x-admin-key': adminKey } : {} })
-          .then(r => r.json()).catch(() => null),
-      ]);
-      if (d.error) throw new Error(d.error);
-      setDocs(d.documents || []);
-      setStats(s && !s.error ? s : null);
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [subject, adminKey]);
+    fetch(`/api/documents/${subject}/sections`)
+      .then(r => r.json())
+      .then(d => setSections(d.sections || []))
+      .catch(() => setSections([]));
+  }, [subject]);
 
-  useEffect(() => { load(); }, [load]);
-
-  async function openChunks(filename) {
+  const openChunks = useCallback(async (filename) => {
     if (expanded === filename) { setExpanded(null); return; }
     setExpanded(filename);
     if (!chunks[filename]) {
-      const r = await fetch(`/api/documents/${subject}/chunks/${encodeURIComponent(filename)}`).then(r => r.json());
+      const r = await fetch(`/api/documents/${subject}/chunks/${encodeURIComponent(filename)}`)
+        .then(r => r.json()).catch(() => ({ chunks: [] }));
       setChunks(c => ({ ...c, [filename]: r.chunks || [] }));
     }
-  }
+  }, [expanded, chunks, subject]);
 
-  /** Upload streams SSE progress — a large PDF is slow enough that a silent
-   *  spinner is indistinguishable from a hang. */
   async function doUpload(file) {
-    if (!file) return;
+    if (!file || readOnly) return;
     setUpload({ filename: file.name, stage: 'start' });
 
     const body = new FormData();
     body.append('file', file);
 
     try {
-      const res = await fetch(`/api/documents/${subject}/upload`, {
-        method: 'POST',
-        headers: adminKey ? { 'x-admin-key': adminKey } : {},
-        body,
-      });
+      const res = await fetch(`/api/documents/${subject}/upload`, { method: 'POST', body });
       if (!res.ok && res.headers.get('content-type')?.includes('json')) {
         throw new Error((await res.json()).error || `Upload failed (${res.status})`);
       }
-
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
@@ -94,17 +82,13 @@ export default function KnowledgePanel({ subject, subjects, onSubjectChange, onO
         const { value, done } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n\n');
-        buf = lines.pop();
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const ev = JSON.parse(line.slice(6));
+        const frames = buf.split('\n\n');
+        buf = frames.pop();
+        for (const frame of frames) {
+          if (!frame.startsWith('data: ')) continue;
+          const ev = JSON.parse(frame.slice(6));
           if (ev.stage === 'error') { setUpload(u => ({ ...u, stage: 'error', error: ev.error })); return; }
-          if (ev.stage === 'done') {
-            setUpload({ filename: ev.result.filename, stage: 'done', result: ev.result });
-            load();
-            return;
-          }
+          if (ev.stage === 'done') { setUpload({ filename: ev.result.filename, stage: 'done', result: ev.result }); onRefresh?.(); return; }
           setUpload(u => ({ ...u, ...ev }));
         }
       }
@@ -113,108 +97,84 @@ export default function KnowledgePanel({ subject, subjects, onSubjectChange, onO
     }
   }
 
-  const current = subjects?.find(s => s.slug === subject);
   const totalChunks = docs.reduce((n, d) => n + d.chunks, 0);
-  const notSearchable = stats && stats.chunks > 0 && stats.embeddings === 0;
+  const notSearchable = current && current.chunks > 0 && current.withEmbedding === 0;
 
   return (
-    <div className="flex flex-col gap-4 h-full overflow-y-auto p-4">
+    <div style={{ overflowY: 'auto', padding: '20px 40px 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* Subject switcher — subjects are tenants, so this is a hard boundary */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Knowledge area</span>
-        {(subjects || []).map(s => (
-          <button
-            key={s.slug}
-            onClick={() => onSubjectChange(s.slug)}
-            className="text-xs px-3 py-1.5 rounded-full transition-colors"
-            style={{
-              background: s.slug === subject ? 'var(--chip-text)' : 'var(--chip-bg)',
-              color: s.slug === subject ? 'var(--surface)' : 'var(--chip-text)',
-              border: '1px solid var(--chip-border)',
-            }}
-          >
-            {s.name}{!s.ready && ' ·'}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <Stat label="Documents" value={docs.filter(d => d.ingested).length} />
+        <Stat label="Chunks" value={totalChunks.toLocaleString()} />
+        <Stat
+          label="Searchable"
+          value={(current?.withEmbedding ?? 0).toLocaleString()}
+          tone={notSearchable ? '#d29922' : undefined}
+        />
+        <Stat label="Embedding model" value={current?.embedModel || '—'} />
+        <Stat label="Store" value={`${current?.storeDriver || '—'}${readOnly ? ' (read-only)' : ''}`} />
       </div>
 
-      {error && (
-        <div className="rounded-lg px-3 py-2 text-sm"
-          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.4)', color: '#dc2626' }}>
-          {error}
+      {current?.storeError && (
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--chip)', border: '1px solid #f85149', color: '#f85149', fontSize: 13.5 }}>
+          <strong>Store unreachable.</strong> {current.storeError}
         </div>
       )}
 
-      {/* What the bot knows */}
-      <div className="flex gap-2 flex-wrap">
-        <Stat label="Documents" value={docs.filter(d => d.ingested).length} />
-        <Stat label="Chunks" value={totalChunks} />
-        <Stat
-          label="Searchable"
-          value={stats ? `${stats.embeddings}` : '—'}
-          tone={notSearchable ? '#dc2626' : undefined}
-        />
-        <Stat label="Embedding" value={stats?.embedModel || current?.embedModel || '—'} />
-      </div>
-
       {notSearchable && (
-        <div className="rounded-lg px-3 py-2 text-sm"
-          style={{ background: 'rgba(217,119,6,0.1)', border: '1px solid rgba(217,119,6,0.4)', color: '#b45309' }}>
-          <strong>Stored but not searchable.</strong> {stats.chunks} chunks have no embeddings, so the
-          chatbot cannot retrieve any of them. Set <code>VOYAGE_API_KEY</code>, or
-          use <code>EMBED_DRIVER=local</code>, then run the embedding backfill.
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--chip)', border: '1px solid #d29922', color: '#d29922', fontSize: 13.5 }}>
+          <strong>Stored but not searchable.</strong> {current.chunks.toLocaleString()} chunks have no
+          embeddings, so nothing here can be retrieved. Set <code>VOYAGE_API_KEY</code> in
+          <code> server/.env</code>, or switch to <code>EMBED_DRIVER=local</code>, then run the
+          embedding backfill.
         </div>
       )}
 
       {/* Upload */}
-      <div
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); doUpload(e.dataTransfer.files?.[0]); }}
-        onClick={() => fileInput.current?.click()}
-        className="rounded-xl px-4 py-6 text-center cursor-pointer transition-colors"
-        style={{
-          border: `2px dashed ${dragging ? 'var(--chip-text)' : 'var(--border)'}`,
-          background: dragging ? 'var(--chip-bg)' : 'transparent',
-        }}
-      >
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".pdf,.txt,.md,.json,.csv"
-          className="hidden"
-          onChange={e => doUpload(e.target.files?.[0])}
-        />
-        <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
-          Drop a PDF here, or click to choose
-        </p>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-          PDF, TXT, MD, JSON, CSV — added to <strong>{current?.name || subject}</strong>
-        </p>
-      </div>
+      {readOnly ? (
+        <div style={{ padding: '12px 16px', borderRadius: 10, border: '1px dashed var(--line)', color: 'var(--muted)', fontSize: 13.5 }}>
+          This knowledge area connects to an existing corpus and is <strong>read-only</strong> —
+          documents cannot be added or removed through SageStack.
+        </div>
+      ) : (
+        <div
+          onDragOver={e => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={e => { e.preventDefault(); setDragging(false); doUpload(e.dataTransfer.files?.[0]); }}
+          onClick={() => fileInput.current?.click()}
+          style={{
+            borderRadius: 12, padding: '22px 16px', textAlign: 'center', cursor: 'pointer',
+            border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--line)'}`,
+            background: dragging ? 'var(--chip)' : 'transparent',
+          }}
+        >
+          <input ref={fileInput} type="file" accept=".pdf,.txt,.md,.json,.csv"
+            style={{ display: 'none' }} onChange={e => doUpload(e.target.files?.[0])} />
+          <div style={{ color: 'var(--ink)' }}>Drop a PDF here, or click to choose</div>
+          <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 4 }}>
+            PDF, TXT, MD, JSON, CSV — added to {current?.name || subject}
+          </div>
+        </div>
+      )}
 
       {upload && (
-        <div className="rounded-lg px-3 py-2 text-sm"
-          style={{ background: 'var(--source-bg)', border: '1px solid var(--source-border)' }}>
-          <p style={{ color: 'var(--text-primary)' }}>
+        <div style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--panel)', border: '1px solid var(--line)', fontSize: 13.5 }}>
+          <div>
             {upload.stage === 'error' ? '✕ ' : upload.stage === 'done' ? '✓ ' : '… '}
             <strong>{upload.filename}</strong>
             {upload.stage !== 'done' && upload.stage !== 'error' && ` — ${upload.stage}`}
             {upload.total ? ` ${upload.done ?? 0}/${upload.total}` : ''}
-          </p>
-          {upload.error && <p className="text-xs mt-1" style={{ color: '#dc2626' }}>{upload.error}</p>}
+          </div>
+          {upload.error && <div style={{ color: '#f85149', fontSize: 12.5, marginTop: 4 }}>{upload.error}</div>}
           {upload.result && (
             <>
-              <p className="text-xs mt-1" style={{ color: 'var(--source-body)' }}>
+              <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 4 }}>
                 {upload.result.pages} pages → {upload.result.chunks} chunks
                 {upload.result.embedded > 0 && `, ${upload.result.embedded} embedded`}
-                {upload.result.searchable
-                  ? ' — searchable'
-                  : ' — NOT searchable (no embeddings)'}
-              </p>
+                {upload.result.searchable ? ' — searchable' : ' — NOT searchable'}
+              </div>
               {(upload.result.warnings || []).map((w, i) => (
-                <p key={i} className="text-xs mt-1" style={{ color: '#b45309' }}>⚠ {w}</p>
+                <div key={i} style={{ color: '#d29922', fontSize: 12.5, marginTop: 3 }}>⚠ {w}</div>
               ))}
             </>
           )}
@@ -222,82 +182,95 @@ export default function KnowledgePanel({ subject, subjects, onSubjectChange, onO
       )}
 
       {/* Documents */}
-      <div className="flex flex-col gap-2">
+      <div>
+        <div className="label-mini" style={{ marginBottom: 8 }}>Documents</div>
         {docs.length === 0 && (
-          <p className="text-sm text-center py-6" style={{ color: 'var(--text-secondary)' }}>
-            Nothing loaded yet. Add a document above.
-          </p>
+          <p style={{ color: 'var(--muted)', fontSize: 13.5 }}>Nothing loaded yet.</p>
         )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {docs.map(d => (
+            <div key={d.filename} style={{ background: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px' }}>
+                <button onClick={() => openChunks(d.filename)}
+                  style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', color: 'var(--ink)', font: 'inherit', cursor: 'pointer' }}>
+                  <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {expanded === d.filename ? '▾' : '▸'} {d.filename}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                    {d.ingested ? `${d.chunks.toLocaleString()} chunks` : 'not ingested'}
+                    {d.pages > 0 && ` · ${d.pages.toLocaleString()} pages`}
+                    {d.analysed > 0 && ` · ${d.analysed.toLocaleString()} analysed`}
+                    {d.bytes != null && ` · ${fmtBytes(d.bytes)}`}
+                    {!d.hasFile && ' · file not stored locally'}
+                  </div>
+                </button>
+                <button className="btn icon" onClick={() => onOpenDoc({ filename: d.filename, title: d.filename, page: 1 })}>
+                  View
+                </button>
+              </div>
 
-        {docs.map(d => (
-          <div key={d.filename} className="rounded-lg overflow-hidden"
-            style={{ background: 'var(--source-bg)', border: '1px solid var(--source-border)' }}>
-            <div className="px-3 py-2 flex items-center gap-3">
-              <button onClick={() => openChunks(d.filename)} className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-medium truncate" style={{ color: 'var(--source-title)' }}>
-                  {expanded === d.filename ? '▾' : '▸'} {d.filename}
-                </p>
-                <p className="text-xs" style={{ color: 'var(--source-body)' }}>
-                  {d.ingested ? `${d.chunks} chunks` : 'not ingested'}
-                  {d.pages > 0 && ` · ${d.pages} pages`}
-                  {d.analysed > 0 && ` · ${d.analysed} analysed`}
-                  {d.bytes != null && ` · ${fmtBytes(d.bytes)}`}
-                  {!d.hasFile && ' · file missing'}
-                </p>
-              </button>
-              {d.hasFile && (
-                <button
-                  onClick={() => onOpenDoc({ filename: d.filename, page: 1 })}
-                  className="text-xs px-2 py-1 rounded shrink-0 hover:opacity-80"
-                  style={{ background: 'var(--chip-bg)', border: '1px solid var(--chip-border)', color: 'var(--chip-text)' }}
-                >View</button>
+              {expanded === d.filename && (
+                <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 420, overflowY: 'auto' }}>
+                  {(chunks[d.filename] || []).map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => onOpenDoc({
+                        filename: d.filename,
+                        title: d.filename,
+                        page: (c.pdfPage ?? 0) + 1,
+                        printedPage: c.printedPage,
+                        excerpt: c.preview.slice(0, 220),
+                      })}
+                      style={{ textAlign: 'left', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', font: 'inherit' }}
+                    >
+                      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                        #{c.chunkIndex}
+                        {c.pdfPage != null && ` · p.${c.pdfPage + 1}`}
+                        {c.printedPage && ` (printed ${c.printedPage})`}
+                        {c.difficulty && ` · ${c.difficulty}`}
+                        {` · ${c.chars} chars`}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--ink)', marginTop: 2 }}>
+                        {c.summary || `${c.preview.slice(0, 180)}…`}
+                      </div>
+                      {c.concepts?.length > 0 && (
+                        <div style={{ fontSize: 11.5, color: 'var(--accent)', marginTop: 4 }}>
+                          {c.concepts.slice(0, 8).join(' · ')}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                  {chunks[d.filename]?.length === 0 && (
+                    <p style={{ color: 'var(--muted)', fontSize: 12.5 }}>No chunks stored.</p>
+                  )}
+                </div>
               )}
             </div>
-
-            {expanded === d.filename && (
-              <div className="px-3 pb-3 flex flex-col gap-1.5 max-h-96 overflow-y-auto">
-                {(chunks[d.filename] || []).map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => c.pdfPage != null && onOpenDoc({
-                      filename: d.filename,
-                      page: c.pdfPage + 1,
-                      printedPage: c.printedPage,
-                      excerpt: c.preview.slice(0, 200),
-                    })}
-                    className="text-left rounded px-2 py-1.5 hover:opacity-80"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
-                  >
-                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      #{c.chunkIndex}
-                      {c.pdfPage != null && ` · p.${c.pdfPage + 1}`}
-                      {c.printedPage && ` (printed ${c.printedPage})`}
-                      {c.difficulty && ` · ${c.difficulty}`}
-                      {' · '}{c.chars} chars
-                    </p>
-                    {c.summary && (
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--source-body)' }}>{c.summary}</p>
-                    )}
-                    {!c.summary && (
-                      <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--source-body)' }}>
-                        {c.preview}
-                      </p>
-                    )}
-                    {c.concepts?.length > 0 && (
-                      <p className="text-xs mt-1" style={{ color: 'var(--chip-text)' }}>
-                        {c.concepts.slice(0, 6).join(' · ')}
-                      </p>
-                    )}
-                  </button>
-                ))}
-                {chunks[d.filename]?.length === 0 && (
-                  <p className="text-xs py-2" style={{ color: 'var(--text-secondary)' }}>No chunks stored.</p>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+
+      {/* Table of contents, where the corpus has one */}
+      {sections.length > 0 && (
+        <div>
+          <div className="label-mini" style={{ marginBottom: 8 }}>Contents ({sections.length} sections)</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+            {sections.map(s => (
+              <button
+                key={`${s.section}-${s.firstPage}`}
+                className="chip"
+                onClick={() => onOpenDoc({
+                  filename: docs[0]?.filename,
+                  title: s.section,
+                  page: s.firstPage + 1,
+                })}
+              >
+                {s.section}<span className="score">p.{s.firstPage + 1}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
