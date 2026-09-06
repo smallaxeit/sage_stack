@@ -278,3 +278,119 @@ input.field, select.field {
   text-transform: uppercase;
   letter-spacing: .07em;
 }
+
+/* ─── Admin panel ──────────────────────────────────────────────────────────── */
+/* Slide-out rather than a modal: it is a control surface you consult while
+   working, not a dialog that blocks until answered. */
+
+.admin-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .35);
+  z-index: 45;
+}
+
+.admin-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(400px, 100%);
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  z-index: 46;
+  display: flex;
+  flex-direction: column;
+  animation: admin-in .16s ease-out;
+}
+@keyframes admin-in { from { transform: translateX(16px); opacity: .6; } }
+
+.admin-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+.admin-tab {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.admin-tab:hover { color: var(--ink); }
+.admin-tab.active {
+  color: var(--accent);
+  border-color: var(--line);
+  border-bottom-color: var(--panel);
+  background: var(--panel);
+  margin-bottom: -1px;
+}
+
+.admin-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.admin-stat {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 11px;
+}
+.admin-stat .v { font-size: 19px; font-weight: 600; line-height: 1.2; }
+.admin-stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
+.admin-stat .s { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+
+.admin-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chip);
+  overflow: hidden;
+  margin-top: 5px;
+}
+.admin-bar > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s ease; }
+
+.admin-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  gap: 10px;
+}
+
+.admin-action {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.admin-action:last-child { border-bottom: none; }
+.admin-action .t { font-size: 13.5px; font-weight: 600; }
+.admin-action .d { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.admin-action .cost { color: var(--accent); }
+
+.admin-note {
+  font-size: 12.5px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+}
+.admin-note.warn { border-color: #d29922; color: #d29922; }
+.admin-note.err  { border-color: #f85149; color: #f85149; }

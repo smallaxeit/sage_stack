@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Chat from './components/Chat';
 import KnowledgePanel from './components/KnowledgePanel';
 import PageViewer from './components/PageViewer';
+import AdminPanel from './components/AdminPanel';
 
 /**
  * Shell, in ask_cooter's layout: a thin header, a collapsible left sidebar, and
@@ -18,6 +19,7 @@ export default function App() {
   const [view, setView] = useState('chat');
   const [openDoc, setOpenDoc] = useState(null);
   const [sidebar, setSidebar] = useState(() => localStorage.getItem('ss-sidebar') !== 'closed');
+  const [adminOpen, setAdminOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('ss-theme') || 'dark');
   const [docs, setDocs] = useState([]);
   const pollRef = useRef(null);
@@ -120,6 +122,11 @@ export default function App() {
         >Knowledge</button>
         <button
           className="btn icon"
+          onClick={() => setAdminOpen(true)}
+          title="Admin"
+        >⚙</button>
+        <button
+          className="btn icon"
           onClick={() => setTheme(t => (t === 'dark' ? 'light' : 'dark'))}
           title="Toggle theme"
         >◐</button>
@@ -195,6 +202,15 @@ export default function App() {
       </div>
 
       <PageViewer subject={subject} doc={openDoc} onClose={() => setOpenDoc(null)} />
+
+      <AdminPanel
+        open={adminOpen}
+        onClose={() => setAdminOpen(false)}
+        subject={subject}
+        current={current}
+        docs={docs}
+        onRefresh={() => { refreshStatus(); refreshDocs(); }}
+      />
     </div>
   );
 }

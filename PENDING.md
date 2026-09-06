@@ -6,15 +6,6 @@ Approved for a future session. Nothing here is in progress.
 
 ## UI
 
-- **Bring back the admin panel.** It was deleted in the UI rebuild (`83ab093`)
-  and its stats folded into the Knowledge screen — that was a judgement call,
-  not a request, and the panel is wanted back. Recover with:
-  `git show 83ab093^:client/src/components/AdminPanel.jsx`
-  Restyle to the current palette and make it per-subject rather than global.
-  **Do not restore it verbatim:** it hardcodes
-  `const ADMIN_KEY = 'sagestack-admin-2026'` in the client bundle, which ships
-  the admin key to every visitor. It must read from the user instead.
-
 - **Per-subject PDF retention and browsing.** Make it a subject setting whether
   the original file is kept, and give the user a real file browser over what a
   subject holds — browse documents, open any page, page through, not just the
@@ -46,6 +37,21 @@ Approved for a future session. Nothing here is in progress.
   tail behind. Delete the document's chunks first.
 
 ---
+
+## Cost
+
+- **Prompt caching is not used, and the prefix is ideal for it.** The system
+  prompt is voice + rules + concept map (stable per subject) followed by the
+  retrieved passages (per request) — a textbook cache prefix. Measured on
+  theology: the concept map alone adds ~3,600 tokens to every single request.
+  Caching the stable half would cut that to roughly a tenth on repeat calls.
+  Needs `system` split into blocks with `cache_control` on the stable one
+  rather than the single concatenated string it is today.
+
+- **The concept map is a recurring cost, not a one-off.** Building it is one
+  call; carrying it is 3,600 tokens per question forever. Worth measuring
+  whether answers actually improve enough to justify that before enabling it
+  on a new subject.
 
 ## Retrieval
 
