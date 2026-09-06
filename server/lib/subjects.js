@@ -50,16 +50,18 @@ export const DEFAULT_MODES = {
 };
 
 const DEFAULTS = {
-  name:       null,           // falls back to slug
-  voice:      null,           // REQUIRED
-  ingest:     { mode: 'auto', chunkTarget: 1400, chunkMax: 2200 },
-  embed:      { driver: 'voyage', model: 'voyage-3.5', dim: 1024 },
-  extract:    {},
-  conceptMap: { enabled: false },
-  retrieval:  { topK: 10 },
-  rules:      DEFAULT_RULES,
-  grounding:  DEFAULT_GROUNDING,
-  modes:      DEFAULT_MODES,
+  name:          null,        // falls back to slug
+  voice:         null,        // REQUIRED
+  ingest:        { mode: 'auto', chunkTarget: 1400, chunkMax: 2200 },
+  embed:         { driver: 'voyage', model: 'voyage-3.5', dim: 1024 },
+  chat:          { model: 'claude-sonnet-5', maxTokens: 4096 },
+  extract:       {},
+  conceptMap:    { enabled: false },
+  retrieval:     { topK: 10 },
+  sourceAliases: {},           // filename -> human-readable title
+  rules:         DEFAULT_RULES,
+  grounding:     DEFAULT_GROUNDING,
+  modes:         DEFAULT_MODES,
 };
 
 function fail(slug, msg) {
@@ -79,14 +81,16 @@ export function normaliseProfile(slug, raw = {}) {
     ...raw,
     slug,
     name:       raw.name || slug,
-    ingest:     { ...DEFAULTS.ingest,     ...(raw.ingest     || {}) },
-    embed:      { ...DEFAULTS.embed,      ...(raw.embed      || {}) },
-    conceptMap: { ...DEFAULTS.conceptMap, ...(raw.conceptMap || {}) },
-    retrieval:  { ...DEFAULTS.retrieval,  ...(raw.retrieval  || {}) },
-    modes:      { ...DEFAULTS.modes,      ...(raw.modes      || {}) },
-    extract:    raw.extract || {},
-    rules:      raw.rules ?? DEFAULT_RULES,
-    grounding:  raw.grounding ?? DEFAULT_GROUNDING,
+    ingest:        { ...DEFAULTS.ingest,     ...(raw.ingest     || {}) },
+    embed:         { ...DEFAULTS.embed,      ...(raw.embed      || {}) },
+    chat:          { ...DEFAULTS.chat,       ...(raw.chat       || {}) },
+    conceptMap:    { ...DEFAULTS.conceptMap, ...(raw.conceptMap || {}) },
+    retrieval:     { ...DEFAULTS.retrieval,  ...(raw.retrieval  || {}) },
+    modes:         { ...DEFAULTS.modes,      ...(raw.modes      || {}) },
+    extract:       raw.extract || {},
+    sourceAliases: raw.sourceAliases || {},
+    rules:         raw.rules ?? DEFAULT_RULES,
+    grounding:     raw.grounding ?? DEFAULT_GROUNDING,
   };
 
   if (typeof p.voice !== 'string' || !p.voice.trim()) {
@@ -107,6 +111,15 @@ export function normaliseProfile(slug, raw = {}) {
   }
   if (!Number.isInteger(p.retrieval.topK) || p.retrieval.topK <= 0) {
     fail(slug, `retrieval.topK must be a positive integer (got ${JSON.stringify(p.retrieval.topK)})`);
+  }
+  if (typeof p.chat.model !== 'string' || !p.chat.model.trim()) {
+    fail(slug, 'chat.model must be a model id string');
+  }
+  if (!Number.isInteger(p.chat.maxTokens) || p.chat.maxTokens <= 0) {
+    fail(slug, `chat.maxTokens must be a positive integer (got ${JSON.stringify(p.chat.maxTokens)})`);
+  }
+  if (typeof p.sourceAliases !== 'object' || Array.isArray(p.sourceAliases)) {
+    fail(slug, 'sourceAliases must be an object mapping filename -> display title');
   }
   if (typeof p.extract !== 'object' || Array.isArray(p.extract)) {
     fail(slug, 'extract must be an object mapping field name -> description');
@@ -209,6 +222,17 @@ export function buildSystemPrompt(profile, { mode = 'deep', conceptMap = null } 
     profile.grounding.trim(),
     modeInstruction.trim(),
   ].filter(Boolean).join('\n\n');
+}
+
+/**
+ * Human-readable title for a source file. Subjects supply their own aliases
+ * (this used to be a hardcoded theology-only map in claude.js); anything not
+ * listed falls back to a tidied-up filename.
+ */
+export function friendlySourceName(profile, filename) {
+  if (!filename) return '';
+  return profile.sourceAliases?.[filename]
+    || filename.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
 }
 
 /**
