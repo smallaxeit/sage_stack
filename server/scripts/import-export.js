@@ -170,11 +170,14 @@ async function main() {
 
   let done = 0;
   let withVec = 0;
+  let oversized = 0;
+  const OVERSIZE = 12000;   // matches the prompt-side ceiling in claude.js
   for (let i = 0; i < lines.length; i += BATCH) {
     const batch = lines.slice(i, i + BATCH).map((l) => {
       const row = JSON.parse(l);
       const vec = readVector(row.vectorRow);
       if (vec) withVec++;
+      if (typeof row.text === "string" && row.text.length > OVERSIZE) oversized++;
       return toChunk(row, vec);
     });
     await store.upsertChunks(slug, batch);
@@ -182,6 +185,22 @@ async function main() {
     process.stdout.write(`  imported ${done}/${lines.length}\r`);
   }
   console.log(`  imported ${done}/${lines.length}   `);
+
+  // An oversized chunk is a chunking failure in whatever built the export, and
+  // it is expensive: retrieved, it floods the prompt and crowds out the real
+  // passages. The theology import carried one of 1.24 MB.
+  if (oversized > 0) {
+    console.warn(
+      `
+  WARNING: ${oversized} chunk(s) exceed ${OVERSIZE.toLocaleString()} characters.
+` +
+      `  These came from a pipeline whose chunking failed. Each one retrieved costs
+` +
+      `  real money and drowns the passages beside it. Review them before relying on
+` +
+      `  this subject — usually the same text is already present, correctly chunked.`,
+    );
+  }
 
   // Concept map, if the export captured one.
   try {
