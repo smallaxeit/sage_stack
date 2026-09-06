@@ -6,7 +6,7 @@ const WELCOME = {
   content: "Grace and peace to you, friend. 🙏\n\nWhat's on your mind today? Is there a passage, a concept, or a question about the faith you'd like to explore?",
 };
 
-export default function Chat({ ready }) {
+export default function Chat({ ready, subject, onOpenDoc }) {
   const [messages, setMessages] = useState([WELCOME]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,7 +45,7 @@ export default function Chat({ ready }) {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId, mode }),
+        body: JSON.stringify({ message: text, sessionId, mode, subject }),
       });
 
       if (!res.ok) throw new Error('Request failed');
@@ -114,7 +114,7 @@ export default function Chat({ ready }) {
 
   async function reset() {
     if (sessionId) {
-      await fetch(`/api/chat/${sessionId}`, { method: 'DELETE' });
+      await fetch(`/api/chat/${sessionId}?subject=${encodeURIComponent(subject || '')}`, { method: 'DELETE' });
     }
     setSessionId(null);
     setMessages([WELCOME]);
@@ -134,6 +134,7 @@ export default function Chat({ ready }) {
             sources={msg.sources}
             chips={msg.chips}
             onChipClick={(chip) => send(`Tell me more about: ${chip}`)}
+            onOpenDoc={onOpenDoc}
           />
         ))}
 

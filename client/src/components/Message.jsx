@@ -2,7 +2,7 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export default function Message({ role, content, sources = [], chips = [], onChipClick }) {
+export default function Message({ role, content, sources = [], chips = [], onChipClick, onOpenDoc }) {
   const isUser = role === 'user';
   const [sourcesOpen, setSourcesOpen] = useState(false);
 
@@ -79,12 +79,34 @@ export default function Message({ role, content, sources = [], chips = [], onChi
             </button>
             {sourcesOpen && (
               <div className="mt-1.5 flex flex-col gap-1.5">
-                {sources.map((s, i) => (
-                  <div key={i} className="rounded-lg px-3 py-2" style={{ background: 'var(--source-bg)', border: '1px solid var(--source-border)' }}>
-                    <p className="text-xs font-medium mb-0.5" style={{ color: 'var(--source-title)' }}>{s.source}</p>
-                    <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--source-body)' }}>{s.preview}…</p>
-                  </div>
-                ))}
+                {sources.map((s, i) => {
+                  // A citation is only worth showing if it can be checked, so a
+                  // source that carried a page number opens that exact page.
+                  const canOpen = !!onOpenDoc && !!s.filename;
+                  const Tag = canOpen ? 'button' : 'div';
+                  return (
+                    <Tag
+                      key={i}
+                      onClick={canOpen ? () => onOpenDoc({
+                        filename: s.filename,
+                        title: s.source,
+                        page: s.page || 1,
+                        printedPage: s.printedPage,
+                        excerpt: s.preview,
+                      }) : undefined}
+                      className={`rounded-lg px-3 py-2 text-left w-full ${canOpen ? 'hover:opacity-80 cursor-pointer' : ''}`}
+                      style={{ background: 'var(--source-bg)', border: '1px solid var(--source-border)' }}
+                    >
+                      <p className="text-xs font-medium mb-0.5" style={{ color: 'var(--source-title)' }}>
+                        {s.source}
+                        {s.page ? ` · p.${s.page}` : ''}
+                        {s.printedPage && String(s.printedPage) !== String(s.page) ? ` (printed ${s.printedPage})` : ''}
+                        {canOpen ? ' ↗' : ''}
+                      </p>
+                      <p className="text-xs leading-relaxed line-clamp-2" style={{ color: 'var(--source-body)' }}>{s.preview}…</p>
+                    </Tag>
+                  );
+                })}
               </div>
             )}
           </div>
