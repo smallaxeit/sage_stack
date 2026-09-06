@@ -46,6 +46,36 @@ export function safeFilename(filename) {
   return base;
 }
 
+/**
+ * Drop chunks whose text is identical to one already seen.
+ *
+ * Worth doing at ingest because a duplicate is invisible until it costs you:
+ * it consumes one of topK retrieval slots, so an answer sees fewer distinct
+ * passages than it should, and nothing reports it. The theology corpus arrived
+ * with 434 exact duplicates — 8% — found only by reading a search result and
+ * noticing the same passage three times at identical scores.
+ *
+ * Compared on whitespace-normalized text, so the same passage reflowed by a
+ * different PDF extraction still matches. Deliberately NOT fuzzy: near-duplicate
+ * detection needs a similarity threshold, and a wrong threshold silently
+ * discards real content. Exact matching can only ever remove genuine copies.
+ */
+export function dedupeChunks(pieces) {
+  const seen = new Map();       // normalized text -> first index kept
+  const kept = [];
+  const duplicates = [];
+
+  for (const piece of pieces) {
+    const key = String(piece.text ?? '').replace(/\s+/g, ' ').trim();
+    if (!key) continue;                       // empty after normalizing
+    if (seen.has(key)) { duplicates.push({ text: piece.text, firstAt: seen.get(key) }); continue; }
+    seen.set(key, kept.length);
+    kept.push(piece);
+  }
+
+  return { kept, removed: duplicates.length };
+}
+
 /** The generic analysis core, plus whatever the subject asked for. */
 export function buildAnalysisPrompt(profile, chunk) {
   const extra = renderExtractSchema(profile);
@@ -152,8 +182,15 @@ export async function ingestDocument({
 
   // ─── Chunk ─────────────────────────────────────────────────────────────────
   onProgress({ stage: 'chunk', filename: safeName });
-  const pieces = chunkPages(pages, profile.ingest);
-  if (pieces.length === 0) throw new Error(`"${safeName}" produced no chunks`);
+  const rawPieces = chunkPages(pages, profile.ingest);
+  if (rawPieces.length === 0) throw new Error(`"${safeName}" produced no chunks`);
+
+  // Before analysis and embedding, because a duplicate costs money at both
+  // stages and then costs a retrieval slot forever.
+  const { kept: pieces, removed: duplicatesRemoved } = dedupeChunks(rawPieces);
+  if (duplicatesRemoved > 0) {
+    warnings.push(`${duplicatesRemoved} duplicate chunk(s) removed before analysis — identical text appearing more than once in this document.`);
+  }
 
   let chunks = pieces.map((p, i) => ({
     id: `${safeName}::${i}`,
@@ -232,6 +269,7 @@ export async function ingestDocument({
     paged,
     pages: pages.length,
     chunks: chunks.length,
+    duplicatesRemoved,
     analyzed,
     analysisFailed,
     embedded,
