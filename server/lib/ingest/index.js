@@ -247,7 +247,12 @@ export async function ingestDocument({
   }
 
   // ─── Keep the original, so citations can open the real page ────────────────
-  if (keepOriginal) {
+  // The subject decides. A copyrighted manual you may not want sitting on disk;
+  // a reference set you browse constantly you certainly do. Without the file
+  // there is nothing for a citation to open, so this is a real tradeoff rather
+  // than a preference. The caller can still override per document.
+  const retain = keepOriginal && profile.ingest.keepOriginal !== false;
+  if (retain) {
     const dir = documentsDir(slug);
     await fs.mkdir(dir, { recursive: true });
     const dest = path.join(dir, safeName);
@@ -255,6 +260,13 @@ export async function ingestDocument({
   }
 
   // ─── Store ─────────────────────────────────────────────────────────────────
+  if (!retain) {
+    warnings.push(
+      'Original file not kept (ingest.keepOriginal is false) — citations for this ' +
+      'document will have no page to open.',
+    );
+  }
+
   onProgress({ stage: 'store', filename: safeName, total: chunks.length });
   await store.initSubject(slug, {
     dim: profile.embed.dim,
@@ -274,6 +286,7 @@ export async function ingestDocument({
     analysisFailed,
     embedded,
     searchable: embedded > 0,
+    originalKept: retain,
     warnings,
   };
 }
