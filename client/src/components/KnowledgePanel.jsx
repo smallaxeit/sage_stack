@@ -204,16 +204,16 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                     {!d.hasFile && ' · file not stored locally'}
                   </div>
                 </button>
-                {/* Only offer the viewer when the source file is actually on
-                    disk. Imported corpora have chunks but no file, and a View
-                    button that 404s is worse than no button. */}
-                {d.hasFile ? (
+                {/* Offer the viewer when a page can actually be shown — a
+                    local PDF, or page scans served from the store. A corpus
+                    connected in place has the latter and not the former. */}
+                {d.viewable ? (
                   <button className="btn icon" onClick={() => onOpenDoc({ filename: d.filename, title: d.filename, page: 1 })}>
                     View
                   </button>
                 ) : (
-                  <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }} title="The chunks were imported without their source file, so there is nothing to open.">
-                    no file
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }} title="This document's chunks were imported without their source file, and the store serves no page scans, so there is nothing to display.">
+                    no preview
                   </span>
                 )}
               </div>
@@ -224,7 +224,7 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                     <button
                       key={c.id}
                       onClick={() => {
-                        if (!d.hasFile || c.pdfPage == null) return;
+                        if (!d.viewable || c.pdfPage == null) return;
                         onOpenDoc({
                           filename: d.filename,
                           title: d.filename,
@@ -272,7 +272,7 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                 key={`${s.section}-${s.firstPage}`}
                 className="chip"
                 onClick={() => {
-                  const doc = docs.find(d => d.hasFile) || docs[0];
+                  const doc = docs.find(d => d.viewable) || docs[0];
                   if (!doc) return;
                   onOpenDoc({ filename: doc.filename, title: s.section, page: s.firstPage + 1 });
                 }}

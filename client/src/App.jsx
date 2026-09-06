@@ -124,10 +124,10 @@ export default function App() {
    * the reader can switch documents in the viewer.
    */
   const openCitation = useCallback((page) => {
-    // Only a document whose file is on disk can be opened at a page. Subjects
-    // whose chunks were imported without their sources have none, and those
-    // subjects also carry no page numbers, so no citation should reach here.
-    const doc = docs.find(d => d.hasFile);
+    // "Viewable" means the page can be SHOWN — either a local PDF, or page
+    // scans served from the store. Gating on a local file alone broke citations
+    // for any corpus connected in place, which has scans but no PDF.
+    const doc = docs.find(d => d.viewable) || docs.find(d => d.hasFile);
     if (!doc) return;
     setOpenDoc({ filename: doc.filename, title: doc.filename, page });
   }, [docs]);

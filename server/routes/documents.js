@@ -59,10 +59,11 @@ router.get('/:subject', async (req, res) => {
     const rt = getRuntime();
     const { subject } = req.params;
     const profile = await rt.getProfile(subject);
+    const store = rt.getStore(profile);
 
     // Chunk counts per source, from the store — the authority on what the bot
     // actually knows, as opposed to what happens to be sitting on disk.
-    const chunks = await rt.getStore(profile).getChunks(subject).catch(() => []);
+    const chunks = await store.getChunks(subject).catch(() => []);
     const bySource = new Map();
     for (const c of chunks) {
       const e = bySource.get(c.source) || { chunks: 0, analyzed: 0, pages: new Set() };
@@ -79,21 +80,32 @@ router.get('/:subject', async (req, res) => {
       return { filename: f, bytes: s.size, addedAt: s.mtime.toISOString() };
     }));
 
+    // Can this store serve page detail and rendered scans? A vision-ingested
+    // corpus can, and for those the scan is a BETTER view than a PDF would be —
+    // it is the exact image the model read.
+    const servesPages = typeof store.getPage === 'function';
+
     const names = new Set([...bySource.keys(), ...stats.map(s => s.filename)]);
     const documents = [...names].map((name) => {
       const counts = bySource.get(name);
       const file = stats.find(s => s.filename === name);
+      const pages = counts ? counts.pages.size : 0;
       return {
         filename: name,
         chunks: counts?.chunks ?? 0,
         analyzed: counts?.analyzed ?? 0,
-        pages: counts ? counts.pages.size : 0,
+        pages,
         bytes: file?.bytes ?? null,
         addedAt: file?.addedAt ?? null,
         // A document can be in the store but have no file (imported), or on
         // disk but not ingested (upload interrupted). Both are worth showing.
         hasFile: !!file,
         ingested: (counts?.chunks ?? 0) > 0,
+        // Whether the UI can open a page for this document AT ALL. Gating the
+        // viewer on hasFile alone was wrong: a corpus connected in place has no
+        // local PDF but does have page scans, and its citations must still open.
+        pageDetail: servesPages && pages > 0,
+        viewable: !!file || (servesPages && pages > 0),
       };
     }).sort((a, b) => b.chunks - a.chunks || a.filename.localeCompare(b.filename));
 
