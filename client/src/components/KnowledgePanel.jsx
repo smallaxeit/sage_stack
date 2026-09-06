@@ -204,9 +204,18 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                     {!d.hasFile && ' · file not stored locally'}
                   </div>
                 </button>
-                <button className="btn icon" onClick={() => onOpenDoc({ filename: d.filename, title: d.filename, page: 1 })}>
-                  View
-                </button>
+                {/* Only offer the viewer when the source file is actually on
+                    disk. Imported corpora have chunks but no file, and a View
+                    button that 404s is worse than no button. */}
+                {d.hasFile ? (
+                  <button className="btn icon" onClick={() => onOpenDoc({ filename: d.filename, title: d.filename, page: 1 })}>
+                    View
+                  </button>
+                ) : (
+                  <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }} title="The chunks were imported without their source file, so there is nothing to open.">
+                    no file
+                  </span>
+                )}
               </div>
 
               {expanded === d.filename && (
@@ -214,13 +223,16 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                   {(chunks[d.filename] || []).map(c => (
                     <button
                       key={c.id}
-                      onClick={() => onOpenDoc({
-                        filename: d.filename,
-                        title: d.filename,
-                        page: (c.pdfPage ?? 0) + 1,
-                        printedPage: c.printedPage,
-                        excerpt: c.preview.slice(0, 220),
-                      })}
+                      onClick={() => {
+                        if (!d.hasFile || c.pdfPage == null) return;
+                        onOpenDoc({
+                          filename: d.filename,
+                          title: d.filename,
+                          page: c.pdfPage + 1,
+                          printedPage: c.printedPage,
+                          excerpt: c.preview.slice(0, 220),
+                        });
+                      }}
                       style={{ textAlign: 'left', background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8, padding: '7px 10px', cursor: 'pointer', font: 'inherit' }}
                     >
                       <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
@@ -259,11 +271,11 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
               <button
                 key={`${s.section}-${s.firstPage}`}
                 className="chip"
-                onClick={() => onOpenDoc({
-                  filename: docs[0]?.filename,
-                  title: s.section,
-                  page: s.firstPage + 1,
-                })}
+                onClick={() => {
+                  const doc = docs.find(d => d.hasFile) || docs[0];
+                  if (!doc) return;
+                  onOpenDoc({ filename: doc.filename, title: s.section, page: s.firstPage + 1 });
+                }}
               >
                 {s.section}<span className="score">p.{s.firstPage + 1}</span>
               </button>

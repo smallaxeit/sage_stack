@@ -1,13 +1,11 @@
 import { Router } from 'express';
-import { readFile } from 'fs/promises';
-import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import { readdir } from 'fs/promises';
 import crypto from 'crypto';
 import path from 'path';
+import Anthropic from '@anthropic-ai/sdk';
 import { getRuntime } from '../lib/runtime.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROGRESS_FILE = path.join(__dirname, '../build-progress.json');
+import { subjectSourceDir } from '../lib/subjects.js';
+import { ingestDocument } from '../lib/ingest/index.js';
 
 const router = Router();
 
@@ -58,31 +56,85 @@ router.get('/status', async (req, res) => {
 });
 
 // ─── Build ────────────────────────────────────────────────────────────────────
+// Bulk-ingests every file in the subject's source directory. Previously this
+// spawned build-knowledge.js, which ignored --subject and wrote to Supabase;
+// it now runs the same pipeline the upload route uses, in-process, so progress
+// is real rather than polled from a file another process may never write.
 
-let buildProcess = null;
+let building = null;   // { subject, startedAt, done, total, current, results }
 
 router.post('/build', async (req, res) => {
-  if (buildProcess && buildProcess.exitCode === null) {
-    return res.json({ ok: false, message: 'Build already running' });
-  }
-  let subject;
-  try { subject = await resolveSubject(req); }
-  catch (err) { return res.status(400).json({ ok: false, message: err.message }); }
+  if (building) return res.json({ ok: false, message: `Build already running for ${building.subject}` });
 
-  buildProcess = spawn('node', ['build-knowledge.js', '--subject', subject], {
-    cwd: path.join(__dirname, '..'),
-    detached: false,
-  });
-  buildProcess.on('exit', () => { buildProcess = null; });
-  res.json({ ok: true, subject });
+  let subject, profile, store;
+  try {
+    const rt = getRuntime();
+    subject = await resolveSubject(req);
+    profile = await rt.getProfile(subject);
+    store = rt.getStore(profile);
+    if (store.readOnly) {
+      return res.status(409).json({ ok: false, message: `Subject "${subject}" is read-only.` });
+    }
+  } catch (err) {
+    return res.status(400).json({ ok: false, message: err.message });
+  }
+
+  const dir = subjectSourceDir(subject);
+  let files;
+  try {
+    files = (await readdir(dir)).filter(f => !f.startsWith('.'));
+  } catch {
+    return res.status(400).json({ ok: false, message: `No source directory for "${subject}" (expected ${dir})` });
+  }
+  if (files.length === 0) {
+    return res.status(400).json({ ok: false, message: `No files in ${dir}` });
+  }
+
+  building = { subject, startedAt: Date.now(), done: 0, total: files.length, current: null, results: [] };
+  res.json({ ok: true, subject, files: files.length });
+
+  // Runs past the response; /build-progress reports it.
+  (async () => {
+    const rt = getRuntime();
+    const embedder = process.env.VOYAGE_API_KEY || profile.embed.driver === 'local'
+      ? rt.getEmbedder(profile) : null;
+    const analysisClient = process.env.ANTHROPIC_API_KEY
+      ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
+
+    for (const file of files) {
+      building.current = file;
+      try {
+        const result = await ingestDocument({
+          profile, store, embedder, analysisClient,
+          filePath: path.join(dir, file),
+          filename: file,
+          onProgress: (p) => { building.stage = p.stage; building.stageDone = p.done; building.stageTotal = p.total; },
+        });
+        building.results.push(result);
+      } catch (err) {
+        building.results.push({ filename: file, error: err.message });
+      }
+      building.done++;
+    }
+    building.finishedAt = Date.now();
+    setTimeout(() => { building = null; }, 60_000);  // keep the result briefly
+  })().catch(() => { building = null; });
 });
 
-router.get('/build-progress', async (req, res) => {
-  try {
-    res.json(JSON.parse(await readFile(PROGRESS_FILE, 'utf-8')));
-  } catch {
-    res.json({ status: 'idle' });
-  }
+router.get('/build-progress', (req, res) => {
+  if (!building) return res.json({ status: 'idle' });
+  res.json({
+    status: building.finishedAt ? 'done' : 'running',
+    subject: building.subject,
+    current: building.done,
+    total: building.total,
+    file: building.current,
+    stage: building.stage ?? null,
+    stageDone: building.stageDone ?? null,
+    stageTotal: building.stageTotal ?? null,
+    pct: building.total ? Math.round((building.done / building.total) * 100) : 0,
+    results: building.finishedAt ? building.results : undefined,
+  });
 });
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────

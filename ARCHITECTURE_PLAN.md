@@ -1,7 +1,7 @@
 # SageStack v2 — Multi-Subject, Local-First Architecture
 
 Branch: `developmentlv`
-Status: **plan only — no code changed yet**
+Status: **Phases 0–3 and 5 shipped; Phase 4 (vision ingestion) outstanding**
 Supersedes: the Supabase-coupled design on `main` (which still runs, untouched)
 
 ---
@@ -236,18 +236,31 @@ for a single service manual it is expensive noise.
 
 ## 6. Phases
 
-### Phase 0 — Rescue the Supabase data ⚠️ do this first
+### Phase 0 — Rescue the Supabase data ✅ done
 
 The theology corpus cost real money to build (Haiku analysis + Voyage embeddings). It
 is currently the *only* copy, in a hosted database this plan is walking away from.
 
-Extend [rebuild-cache-from-supabase.js](server/scripts/rebuild-cache-from-supabase.js)
-— which already paginates `chunks` — into a **full dump**: chunks **+ embeddings** (it
+Extend `rebuild-cache-from-supabase.js` — which already paginated `chunks` — into a
+**full dump**: chunks **+ embeddings** (it
 currently skips the `embedding` column, the expensive part) **+ `concept_map` +
 `sources`** → `data/exports/theology-<date>/`.
 
-Verify the row count and spot-check a vector before touching anything else. This is
-cheap, reversible, and de-risks everything downstream.
+**Result:** 5433 chunks exported, all 5433 embedded, verified — row count against
+the table's own count, `vectors.f32` at exactly 22,253,568 bytes
+(5433 × 1024 × 4), first vector L2 = 1.000000.
+[export-supabase.js](server/scripts/export-supabase.js) writes verbatim API
+pages to `raw/` *before* transforming, so a bug in the transform cannot cost
+the rescue.
+
+[import-export.js](server/scripts/import-export.js) then loaded it. The model
+guard earned itself on first run: theology's profile said `voyage-3.5`, the
+export was `voyage-3`. Both 1024-dim, so a dimension check passes and every
+query would have searched voyage-3 vectors with a voyage-3.5 embedder,
+returning confident nonsense. The import refused and named the fix.
+
+434 of 5433 chunks (8%) were exact duplicates from repeated builds, silently
+consuming retrieval slots. Removed; 4999 remain, all embedded.
 
 ### Phase 1 — Store interface + both drivers ✅ done
 
@@ -280,22 +293,46 @@ Introduce `subjects/`, move theology's hardcoded prompt out of
 through search → chat → admin. Import the Phase 0 export as subject #1 and confirm the
 app behaves exactly as it does on `main`. **That equivalence is the phase gate.**
 
-### Phase 3 — Embedder interface
+### Phase 3 — Embedder interface ✅ done
 
-`voyage` + `local` drivers behind one interface, dim recorded per subject, mismatch
-guard. Re-embed theology on `voyage-3.5`.
+[embed/](server/lib/embed/) — `voyage` and `local` drivers, dimension and model
+recorded per subject, mismatch guard.
 
-### Phase 4 — Vision ingestion
+Theology was **not** re-embedded on voyage-3.5 as originally planned. Its
+voyage-3 vectors imported cleanly and re-embedding 5433 chunks would spend real
+money to change vectors that already work. `subjects/theology` therefore pins
+`voyage-3`, and that value is load-bearing.
 
-Spike the Node PDF→PNG renderer first (the one real unknown). Then port ask_cooter's
-per-page loop: render → extract → chunk → embed → store, committed per page, resumable,
-with retry and opus↔sonnet fallback.
+### Phase 4 — Vision ingestion ⬜ outstanding
 
-### Phase 5 — Feed it PDFs
+Still the one real unknown: a Node PDF→PNG renderer (`pdf-to-img`,
+`mupdf-js` — unverified). Then ask_cooter's per-page loop: render → extract →
+chunk → embed → store, committed per page, resumable, with retry and model
+fallback.
 
-The upload route `multer` was installed for and never wired: drop or upload a PDF →
-pick subject → detect mode → ingest with live progress. This is what turns "rebuild the
-knowledge base" from a CLI ritual into a feature.
+**Partly obviated.** `softail` connects to the corpus ask_cooter already built
+rather than rebuilding it, so this is only needed to ingest a *new* scan. Text
+ingestion detects a scan and refuses with an explanation instead of silently
+storing nothing.
+
+### Phase 5 — Feed it PDFs ✅ done
+
+[routes/documents.js](server/routes/documents.js) — upload with SSE progress,
+document listing, chunk browsing, file and page-image serving.
+[ingest/](server/lib/ingest/) — page-aware parsing, so every chunk knows its
+page and citations can link to it.
+
+Also shipped beyond the plan:
+
+- **Per-subject stores.** A subject can point at its own backend, which is how
+  `softail` reads ask_cooter's database in place rather than copying it. Also
+  the cleaner answer for multi-tenancy — a tenant can own its whole database.
+- **[store/askcooter.js](server/lib/store/askcooter.js)** — read-only adapter
+  translating a foreign schema into the canonical chunk. Every write throws.
+- **UI rebuilt on ask_cooter's design** — full-width, split scan/text page
+  viewer with zoom and pan, and inline `[p.N]` citations that open the page.
+- **[conceptmap.js](server/lib/conceptmap.js)** — subject-agnostic concept map
+  build, replacing a script that hardcoded a theology prompt.
 
 ---
 
@@ -360,6 +397,29 @@ to that role only, and a connection pool per tenant. That makes a cross-tenant r
 at the *database*, not at our code. Deferred deliberately: it needs per-tenant connection
 management, and the structural guarantee plus tests covers the single-operator case we
 have now. Revisit before the first external client.
+
+## 8a. Bugs worth remembering
+
+**Asking for citations the context cannot support makes the model invent them.**
+A theology answer cited eleven page numbers from a corpus where no chunk has a
+page and no chunk text mentions one. The instruction to cite `[p.N]` had been
+put in the rules every subject inherits, so the model complied with the format
+regardless — producing citations that looked authoritative, rendered as links,
+and pointed at nothing. Fixed by choosing the instruction per request from what
+was actually retrieved, and stating the absence explicitly rather than leaving
+it silent.
+
+**A dimension check is not a model check.** voyage-3 and voyage-3.5 are both
+1024-dim. Only the recorded model name distinguishes them, and the failure is
+silent.
+
+**Duplicates are invisible until they cost you.** 8% of the theology corpus was
+exact duplicates; with `topK: 10` that meant an answer saw 8 distinct passages
+instead of 10, with nothing reporting it.
+
+**Multer strips the extension.** An upload lands at a random temp path with no
+extension, so deriving file type from the path failed for every upload — caught
+only by testing through the real endpoint rather than in-process.
 
 ## 9. Explicitly not doing
 

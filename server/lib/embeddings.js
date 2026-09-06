@@ -1,11 +1,20 @@
 /**
- * embeddings.js
+ * embeddings.js — Voyage embeddings stored in and searched via Supabase.
  *
- * Generates and stores Voyage AI embeddings for chunks.
- * Uses voyage-3 — optimized for semantic search across diverse/multilingual text.
+ * STATUS: PARKED, not wired into the running app.
  *
- * Storage: Supabase chunks.embedding (vector(1024))
- * Search:  pgvector cosine similarity via Supabase RPC
+ * Superseded by lib/embed/ (pluggable embedders) and lib/store/ (pluggable
+ * storage). Nothing imports this.
+ *
+ * Kept deliberately: Supabase is hosted Postgres + pgvector and remains a
+ * candidate backend for a public deploy. Two routes exist if that happens —
+ * point the existing `postgres` store driver at Supabase's connection string
+ * (Supabase is Postgres, so no new code), or promote this REST path into a
+ * proper store driver for environments that cannot open a direct TCP
+ * connection. Either needs a `subject` column added to the schema first, since
+ * the tables below are single-tenant.
+ *
+ * See ARCHITECTURE_PLAN.md for that decision.
  */
 
 import { supabase } from './supabase.js';

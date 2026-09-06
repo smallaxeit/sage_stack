@@ -1,8 +1,14 @@
 # SageStack — Philosophy & Theology Reading List
 
-Mark `[x]` when you've downloaded the file and dropped it in `/source/`. The build pipeline will auto-stamp `✓ analyzed` after processing.
+Reading list for the **theology** subject. Mark `[x]` when the file has been
+loaded.
 
-Files staged in `/source/library/` — move to `/source/` when ready to build.
+Drop files in `subjects/theology/source/` and run a build, or upload them
+through the Knowledge screen.
+
+(The old pipeline stamped `✓ analyzed` markers into `/source/` as zero-byte
+files. Those are gone — the Knowledge screen is the source of truth for what is
+actually loaded, since it reads the store rather than the filesystem.)
 
 ---
 

@@ -1,14 +1,16 @@
 {
-  "name": "theology-teacher",
+  "name": "sagestack",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "build:knowledge": "cd server && node build-knowledge.js",
-    "export:supabase": "node server/scripts/export-supabase.js",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start",
     "test": "node --test server/lib/**/*.test.js",
+    "export:supabase": "node server/scripts/export-supabase.js",
+    "import:export": "node server/scripts/import-export.js",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install"
   },
   "devDependencies": {
