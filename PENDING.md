@@ -70,13 +70,24 @@ Approved for a future session. Nothing here is in progress.
 
 ## Storage
 
-- **Supabase is parked, not wired.** `lib/supabase.js` and `lib/embeddings.js`
-  are kept for a future public deploy but nothing imports them. Two routes if
-  it happens: point the existing `postgres` driver at Supabase's connection
-  string (no new code — Supabase is Postgres), or promote the REST path to a
-  real store driver for environments that cannot open a direct TCP connection.
-  **Either needs a `subject` column added first** — the existing schema is
-  single-tenant, which is exactly what this architecture moved away from.
+- **Verify the Supabase path.** Supabase is Postgres, so the existing
+  `postgres` driver should work against its connection string with no new
+  code — documented in the README but never run against a live project. Needs
+  `CREATE EXTENSION vector` in the SQL editor and the **session** pooler
+  string (the transaction pooler does not support prepared statements). Worth
+  confirming before anyone depends on it. Note this uses a fresh
+  schema-per-subject layout, so it does not read the old single-tenant
+  `chunks` table — that data was already exported and imported.
+
+- **The REST-based Supabase modules stay parked.** `lib/supabase.js` and
+  `lib/embeddings.js` are only needed for an environment that cannot open a
+  direct database connection. Promoting them to a real store driver would need
+  a `subject` column added to that schema first.
+
+- **Docker image was missing `subjects/`.** Fixed — a container would have
+  booted with no knowledge areas at all. Never caught because Docker is not
+  installed on the dev machine, so the image has never actually been built.
+  Build it once before relying on it.
 
 - **Tenant isolation is structural but not privileged.** One `sage` role can
   read every schema. The real multi-tenant version is a Postgres role per

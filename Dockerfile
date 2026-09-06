@@ -34,6 +34,15 @@ RUN cd server && npm ci --omit=dev
 # Copy the server source code
 COPY server/ ./server/
 
+# Subject profiles define every knowledge area — without them the container
+# boots with nothing to serve. Their source/ staging directories are excluded
+# by .dockerignore; only the profiles are needed at runtime.
+COPY subjects/ ./subjects/
+
+# Writable state for the files store, uploaded documents and exports. Mount a
+# volume here to persist it; a Postgres-backed deploy does not need it.
+VOLUME ["/app/data"]
+
 # Pull the built React app from Stage 1.
 # The builder image is discarded after this —
 # your final image stays small.
