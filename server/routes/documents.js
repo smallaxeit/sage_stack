@@ -19,6 +19,7 @@ import os from 'os';
 import Anthropic from '@anthropic-ai/sdk';
 
 import { getRuntime } from '../lib/runtime.js';
+import { resolveStoreConfig } from '../lib/subjects.js';
 import { ingestDocument, documentsDir, safeFilename } from '../lib/ingest/index.js';
 
 const router = Router();
@@ -57,11 +58,11 @@ router.get('/:subject', async (req, res) => {
   try {
     const rt = getRuntime();
     const { subject } = req.params;
-    await rt.getProfile(subject); // validates the slug and that it exists
+    const profile = await rt.getProfile(subject);
 
     // Chunk counts per source, from the store — the authority on what the bot
     // actually knows, as opposed to what happens to be sitting on disk.
-    const chunks = await rt.store.getChunks(subject).catch(() => []);
+    const chunks = await rt.getStore(profile).getChunks(subject).catch(() => []);
     const bySource = new Map();
     for (const c of chunks) {
       const e = bySource.get(c.source) || { chunks: 0, analysed: 0, pages: new Set() };
@@ -124,8 +125,8 @@ router.get('/:subject/chunks/:filename', async (req, res) => {
   try {
     const rt = getRuntime();
     const { subject, filename } = req.params;
-    await rt.getProfile(subject);
-    const all = await rt.store.getChunks(subject);
+    const profile = await rt.getProfile(subject);
+    const all = await rt.getStore(profile).getChunks(subject);
     const mine = all
       .filter(c => c.source === filename)
       .sort((a, b) => a.chunkIndex - b.chunkIndex)
@@ -163,6 +164,13 @@ router.post('/:subject/upload', adminAuth, upload.single('file'), async (req, re
   try {
     const rt = getRuntime();
     const profile = await rt.getProfile(subject);
+    const store = rt.getStore(profile);
+    if (store.readOnly) {
+      throw new Error(
+        `Subject "${subject}" connects to an existing read-only corpus, so it cannot accept uploads. ` +
+        `Create a SageStack-owned subject to ingest new documents.`,
+      );
+    }
 
     // Both enrichment stages are optional; report which are active up front so
     // the operator knows what they are getting before waiting for it.
@@ -177,7 +185,7 @@ router.post('/:subject/upload', adminAuth, upload.single('file'), async (req, re
 
     const result = await ingestDocument({
       profile,
-      store: rt.store,
+      store,
       embedder,
       analysisClient,
       filePath: req.file.path,
@@ -200,18 +208,87 @@ router.delete('/:subject/:filename', adminAuth, async (req, res) => {
     const rt = getRuntime();
     const { subject } = req.params;
     const filename = safeFilename(req.params.filename);
-    await rt.getProfile(subject);
-
-    const all = await rt.store.getChunks(subject);
-    const mine = all.filter(c => c.source === filename);
-    if (rt.store.deleteChunks) {
-      await rt.store.deleteChunks(subject, mine.map(c => c.id));
+    const profile = await rt.getProfile(subject);
+    const store = rt.getStore(profile);
+    if (store.readOnly) {
+      return res.status(409).json({
+        error: `Subject "${subject}" is backed by a read-only store — nothing can be deleted through SageStack.`,
+      });
     }
+
+    const all = await store.getChunks(subject);
+    const mine = all.filter(c => c.source === filename);
+    if (store.deleteChunks) await store.deleteChunks(subject, mine.map(c => c.id));
 
     const full = await resolveDoc(subject, filename);
     if (full) await fs.unlink(full);
 
     res.json({ ok: true, filename, removedChunks: mine.length, fileRemoved: !!full });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Scanned page image ───────────────────────────────────────────────────────
+// A vision-ingested corpus keeps a rendered PNG per page (ask_cooter does this),
+// which beats a PDF viewer for a scan: it is the exact image the model read.
+router.get('/:subject/page-image/:page', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const { subject } = req.params;
+    const profile = await rt.getProfile(subject);
+    const store = rt.getStore(profile);
+
+    if (!store.getPage) return res.status(404).json({ error: 'This subject has no page images' });
+
+    const page = Number(req.params.page);
+    if (!Number.isInteger(page) || page < 0) return res.status(400).json({ error: 'Bad page number' });
+
+    const info = await store.getPage(subject, page);
+    if (!info?.imagePath) return res.status(404).json({ error: 'No image for that page' });
+
+    // The stored path is relative to the other project's root, so only its
+    // basename is trusted; the directory comes from this app's configuration.
+    const cfg = resolveStoreConfig(profile) || {};
+    if (!cfg.imageDir) return res.status(404).json({ error: 'No image directory configured for this subject' });
+    const full = path.join(cfg.imageDir, path.basename(info.imagePath));
+    if (path.relative(cfg.imageDir, full).startsWith('..')) return res.status(400).json({ error: 'Bad path' });
+
+    try { await fs.access(full); } catch { return res.status(404).json({ error: 'Image file missing on disk' }); }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    createReadStream(full).pipe(res);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Page detail (text, specs, diagrams) ──────────────────────────────────────
+router.get('/:subject/page/:page', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const profile = await rt.getProfile(req.params.subject);
+    const store = rt.getStore(profile);
+    if (!store.getPage) return res.status(404).json({ error: 'This subject has no page detail' });
+
+    const info = await store.getPage(req.params.subject, Number(req.params.page));
+    if (!info) return res.status(404).json({ error: 'No such page' });
+    const { imagePath, ...rest } = info;
+    res.json({ ...rest, hasImage: !!imagePath });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Section table of contents ────────────────────────────────────────────────
+router.get('/:subject/sections', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const profile = await rt.getProfile(req.params.subject);
+    const store = rt.getStore(profile);
+    if (!store.listSections) return res.json({ sections: [] });
+    res.json({ sections: await store.listSections() });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

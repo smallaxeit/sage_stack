@@ -40,7 +40,7 @@ router.get('/stats', async (req, res) => {
 
     let conceptMap = null;
     if (profile.conceptMap.enabled) {
-      try { conceptMap = await rt.store.getConceptMap(subject); } catch { /* not built */ }
+      try { conceptMap = await rt.getStore(profile).getConceptMap(subject); } catch { /* not built */ }
     }
 
     res.json({
@@ -68,7 +68,7 @@ router.get('/sources', async (req, res) => {
     const rt = getRuntime();
     const subject = await resolveSubject(req);
     const profile = await rt.getProfile(subject);
-    const chunks = await rt.store.getChunks(subject);
+    const chunks = await rt.getStore(profile).getChunks(subject);
 
     const map = {};
     for (const c of chunks) {
@@ -111,6 +111,9 @@ router.post('/build-embeddings', async (req, res) => {
     subject = await resolveSubject(req);
     profile = await rt.getProfile(subject);
     embedder = rt.getEmbedder(profile);
+    if (rt.getStore(profile).readOnly) {
+      return res.status(409).json({ ok: false, message: `Subject "${subject}" is read-only — embeddings cannot be written.` });
+    }
   } catch (err) {
     return res.status(400).json({ ok: false, message: err.message });
   }
@@ -122,10 +125,10 @@ router.post('/build-embeddings', async (req, res) => {
     const BATCH = 128;
     let done = 0;
     for (;;) {
-      const missing = await rt.store.chunksMissingEmbeddings(subject, { limit: BATCH });
+      const missing = await rt.getStore(profile).chunksMissingEmbeddings(subject, { limit: BATCH });
       if (missing.length === 0) break;
       const vectors = await embedder.embedDocuments(missing.map(m => m.text));
-      await rt.store.setEmbeddings(subject, missing.map((m, i) => ({ id: m.id, vector: vectors[i] })));
+      await rt.getStore(profile).setEmbeddings(subject, missing.map((m, i) => ({ id: m.id, vector: vectors[i] })));
       done += missing.length;
       console.log(`[embeddings:${subject}] ${done}`);
     }

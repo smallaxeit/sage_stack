@@ -19,18 +19,35 @@
 
 import { createStore } from './store/index.js';
 import { createEmbedder } from './embed/index.js';
-import { loadSubject, listSubjects as listSubjectProfiles } from './subjects.js';
+import { loadSubject, listSubjects as listSubjectProfiles, resolveStoreConfig } from './subjects.js';
 import { createTeacher } from './claude.js';
 
 export function createRuntime(opts = {}) {
+  // The default store backs any subject without its own `store` block, and
+  // always backs sessions -- a subject may point at someone else's database
+  // (see store/askcooter.js), and chat history must never be written there.
   const store     = opts.store || createStore(opts.storeOptions);
   const profiles  = new Map();
   const embedders = new Map();
   const teachers  = new Map();
+  const stores    = new Map();   // config key -> store
 
   async function getProfile(slug) {
     if (!profiles.has(slug)) profiles.set(slug, await loadSubject(slug, opts.subjectOptions));
     return profiles.get(slug);
+  }
+
+  /**
+   * The store backing one subject. Subjects with their own `store` block get a
+   * dedicated backend, cached by configuration so two subjects pointing at the
+   * same database share one pool.
+   */
+  function getStore(profile) {
+    const cfg = resolveStoreConfig(profile);
+    if (!cfg) return store;
+    const key = JSON.stringify(cfg);
+    if (!stores.has(key)) stores.set(key, createStore(cfg));
+    return stores.get(key);
   }
 
   /**
@@ -47,7 +64,11 @@ export function createRuntime(opts = {}) {
   async function getTeacher(slug) {
     if (!teachers.has(slug)) {
       const profile = await getProfile(slug);
-      teachers.set(slug, createTeacher({ profile, store, embedder: getEmbedder(profile) }));
+      teachers.set(slug, createTeacher({
+        profile,
+        store: getStore(profile),
+        embedder: getEmbedder(profile),
+      }));
     }
     return teachers.get(slug);
   }
@@ -73,7 +94,9 @@ export function createRuntime(opts = {}) {
     const { subjects, errors } = await listSubjectProfiles(opts.subjectOptions);
     const rows = await Promise.all(subjects.map(async (p) => {
       let built = null;
-      try { built = await store.getSubjectMeta(p.slug); } catch { /* store unavailable */ }
+      let storeError = null;
+      try { built = await getStore(p).getSubjectMeta(p.slug); }
+      catch (err) { storeError = err.message; }
       return {
         slug: p.slug,
         name: p.name,
@@ -83,6 +106,9 @@ export function createRuntime(opts = {}) {
         embedModel: built?.embedModel ?? null,
         dim: built?.dim ?? p.embed.dim,
         ingestMode: p.ingest.mode,
+        storeDriver: p.store?.driver || store.driver,
+        readOnly: !!built?.readOnly,
+        storeError,
         conceptMap: p.conceptMap.enabled,
         builtAt: built?.updatedAt ?? null,
       };
@@ -92,12 +118,16 @@ export function createRuntime(opts = {}) {
 
   return {
     store,
+    getStore,
     getProfile,
     getEmbedder,
     getTeacher,
     defaultSubject,
     status,
-    async close() { await store.close?.(); },
+    async close() {
+      await store.close?.();
+      for (const s of stores.values()) await s.close?.();
+    },
   };
 }
 

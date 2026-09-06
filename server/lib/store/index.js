@@ -41,8 +41,9 @@
 
 import { createFilesStore } from './files.js';
 import { createPostgresStore } from './postgres.js';
+import { createAskCooterStore } from './askcooter.js';
 
-export const DRIVERS = ['files', 'postgres'];
+export const DRIVERS = ['files', 'postgres', 'askcooter'];
 
 /**
  * A subject slug becomes a directory name and a Postgres schema identifier, so
@@ -102,6 +103,8 @@ export function createStore(opts = {}) {
   switch (driver) {
     case 'files':    return createFilesStore(opts);
     case 'postgres': return createPostgresStore(opts);
+    // Read-only adapter over an existing ask_cooter database (see askcooter.js).
+    case 'askcooter': return createAskCooterStore(opts);
     default:
       throw new Error(`Unknown KB_STORE driver: ${driver} (expected one of ${DRIVERS.join(', ')})`);
   }
