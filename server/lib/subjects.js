@@ -29,7 +29,7 @@ export const INGEST_MODES  = ['auto', 'text', 'vision'];
 export const EMBED_DRIVERS = ['voyage', 'local'];
 
 /**
- * Behavioural rules that are not subject-specific. A profile may override
+ * Behavioral rules that are not subject-specific. A profile may override
  * `rules` wholesale, but the default is deliberately domain-neutral so a
  * service-manual subject inherits something sane instead of theology's framing.
  */
@@ -168,10 +168,10 @@ function fail(slug, msg) {
  *   { mode, instruction? }           -> a named mode, optionally with extra text
  *
  * The legacy string form is kept working because it is what the first
- * subject.json files used, and silently changing their behaviour would be
+ * subject.json files used, and silently changing their behavior would be
  * worse than carrying the shape.
  */
-export function normaliseGrounding(raw) {
+export function normalizeGrounding(raw) {
   if (raw == null) return { mode: DEFAULT_GROUNDING_MODE, instruction: null };
   if (typeof raw === 'string') return { mode: 'custom', instruction: raw };
   if (typeof raw === 'object' && !Array.isArray(raw)) {
@@ -188,7 +188,7 @@ export function renderGrounding(profile) {
 }
 
 /** Merge a raw subject.json over the defaults and validate the result. */
-export function normaliseProfile(slug, raw = {}) {
+export function normalizeProfile(slug, raw = {}) {
   assertValidSlug(slug);
 
   if (raw.slug && raw.slug !== slug) {
@@ -210,7 +210,7 @@ export function normaliseProfile(slug, raw = {}) {
     sourceAliases: raw.sourceAliases || {},
     store:         raw.store || null,
     rules:         raw.rules ?? DEFAULT_RULES,
-    grounding:     normaliseGrounding(raw.grounding),
+    grounding:     normalizeGrounding(raw.grounding),
   };
 
   if (typeof p.voice !== 'string' || !p.voice.trim()) {
@@ -294,7 +294,7 @@ export async function loadSubject(slug, opts = {}) {
     if (err.code === 'ENOENT') throw new Error(`No such subject: "${slug}" (expected ${file})`);
     throw new Error(`subject "${slug}": subject.json is not valid JSON — ${err.message}`);
   }
-  return normaliseProfile(slug, raw);
+  return normalizeProfile(slug, raw);
 }
 
 /** Every subject with a readable, valid profile. Invalid ones are reported, not thrown. */

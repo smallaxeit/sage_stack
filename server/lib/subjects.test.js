@@ -14,16 +14,16 @@ import os from 'os';
 import path from 'path';
 
 import {
-  normaliseProfile, loadSubject, listSubjects, buildSystemPrompt,
+  normalizeProfile, loadSubject, listSubjects, buildSystemPrompt,
   renderConceptMap, renderExtractSchema, subjectSourceDir, renderGrounding,
   DEFAULT_RULES, DEFAULT_GROUNDING, GROUNDING_MODES, INGEST_MODES, EMBED_DRIVERS,
 } from './subjects.js';
 
 const MINIMAL = { voice: 'You are a test teacher.' };
 
-describe('normaliseProfile — defaults', () => {
+describe('normalizeProfile — defaults', () => {
   test('a minimal profile gets sane defaults', () => {
-    const p = normaliseProfile('demo', MINIMAL);
+    const p = normalizeProfile('demo', MINIMAL);
     assert.equal(p.slug, 'demo');
     assert.equal(p.name, 'demo', 'name falls back to slug');
     assert.equal(p.ingest.mode, 'auto');
@@ -50,59 +50,59 @@ describe('normaliseProfile — defaults', () => {
   });
 
   test('nested blocks merge rather than replace', () => {
-    const p = normaliseProfile('demo', { ...MINIMAL, embed: { dim: 768, driver: 'local' } });
+    const p = normalizeProfile('demo', { ...MINIMAL, embed: { dim: 768, driver: 'local' } });
     assert.equal(p.embed.dim, 768);
     assert.equal(p.embed.driver, 'local');
     assert.equal(p.embed.model, 'voyage-3.5', 'unspecified keys keep their default');
   });
 });
 
-describe('normaliseProfile — validation', () => {
+describe('normalizeProfile — validation', () => {
   test('voice is required', () => {
-    assert.throws(() => normaliseProfile('demo', {}), /non-empty "voice" is required/);
-    assert.throws(() => normaliseProfile('demo', { voice: '   ' }), /non-empty "voice" is required/);
+    assert.throws(() => normalizeProfile('demo', {}), /non-empty "voice" is required/);
+    assert.throws(() => normalizeProfile('demo', { voice: '   ' }), /non-empty "voice" is required/);
   });
 
   test('slug must be valid and must match the directory', () => {
-    assert.throws(() => normaliseProfile('Bad-Slug', MINIMAL), /Invalid subject slug/);
-    assert.throws(() => normaliseProfile('../escape', MINIMAL), /Invalid subject slug/);
+    assert.throws(() => normalizeProfile('Bad-Slug', MINIMAL), /Invalid subject slug/);
+    assert.throws(() => normalizeProfile('../escape', MINIMAL), /Invalid subject slug/);
     assert.throws(
-      () => normaliseProfile('demo', { ...MINIMAL, slug: 'other' }),
+      () => normalizeProfile('demo', { ...MINIMAL, slug: 'other' }),
       /declares slug "other" but lives in directory "demo"/,
     );
   });
 
   test('enums are checked', () => {
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, ingest: { mode: 'ocr' } }), /ingest\.mode must be one of/);
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, embed: { driver: 'openai' } }), /embed\.driver must be one of/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, ingest: { mode: 'ocr' } }), /ingest\.mode must be one of/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, embed: { driver: 'openai' } }), /embed\.driver must be one of/);
     for (const mode of INGEST_MODES) {
-      assert.equal(normaliseProfile('demo', { ...MINIMAL, ingest: { mode } }).ingest.mode, mode);
+      assert.equal(normalizeProfile('demo', { ...MINIMAL, ingest: { mode } }).ingest.mode, mode);
     }
     for (const driver of EMBED_DRIVERS) {
-      assert.equal(normaliseProfile('demo', { ...MINIMAL, embed: { driver } }).embed.driver, driver);
+      assert.equal(normalizeProfile('demo', { ...MINIMAL, embed: { driver } }).embed.driver, driver);
     }
   });
 
   test('numeric fields are checked', () => {
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, embed: { dim: 0 } }), /embed\.dim/);
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, embed: { dim: 1024.5 } }), /embed\.dim/);
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, retrieval: { topK: -1 } }), /retrieval\.topK/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, embed: { dim: 0 } }), /embed\.dim/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, embed: { dim: 1024.5 } }), /embed\.dim/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, retrieval: { topK: -1 } }), /retrieval\.topK/);
     assert.throws(
-      () => normaliseProfile('demo', { ...MINIMAL, ingest: { chunkTarget: 2000, chunkMax: 1000 } }),
+      () => normalizeProfile('demo', { ...MINIMAL, ingest: { chunkTarget: 2000, chunkMax: 1000 } }),
       /chunkMax >= chunkTarget/,
     );
   });
 
   test('extract must map field -> description string', () => {
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, extract: ['a'] }), /extract must be an object/);
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, extract: { specs: '' } }), /extract\.specs/);
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, extract: { specs: 42 } }), /extract\.specs/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, extract: ['a'] }), /extract must be an object/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, extract: { specs: '' } }), /extract\.specs/);
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, extract: { specs: 42 } }), /extract\.specs/);
   });
 });
 
 describe('grounding modes', () => {
   test('accepts a mode name', () => {
-    const p = normaliseProfile('demo', { ...MINIMAL, grounding: { mode: 'strict' } });
+    const p = normalizeProfile('demo', { ...MINIMAL, grounding: { mode: 'strict' } });
     assert.equal(p.grounding.mode, 'strict');
     assert.match(renderGrounding(p), /GROUNDING — STRICT/);
   });
@@ -110,13 +110,13 @@ describe('grounding modes', () => {
   test('a legacy string is kept verbatim', () => {
     // The first subject.json files used a plain string; silently changing what
     // they do would be worse than carrying the shape.
-    const p = normaliseProfile('demo', { ...MINIMAL, grounding: 'ONLY use the passages.' });
+    const p = normalizeProfile('demo', { ...MINIMAL, grounding: 'ONLY use the passages.' });
     assert.equal(p.grounding.mode, 'custom');
     assert.equal(renderGrounding(p), 'ONLY use the passages.');
   });
 
   test('a mode can be extended with extra instruction text', () => {
-    const p = normaliseProfile('demo', {
+    const p = normalizeProfile('demo', {
       ...MINIMAL,
       grounding: { mode: 'strict', instruction: 'Never mention church councils.' },
     });
@@ -126,9 +126,9 @@ describe('grounding modes', () => {
   });
 
   test('rejects an unknown mode, and a custom mode with no text', () => {
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, grounding: { mode: 'loose' } }),
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, grounding: { mode: 'loose' } }),
       /grounding\.mode must be one of/);
-    assert.throws(() => normaliseProfile('demo', { ...MINIMAL, grounding: { mode: 'custom' } }),
+    assert.throws(() => normalizeProfile('demo', { ...MINIMAL, grounding: { mode: 'custom' } }),
       /custom grounding needs instruction text/);
   });
 
@@ -144,7 +144,7 @@ describe('grounding modes', () => {
   test('grounding is the LAST instruction in the prompt', () => {
     // It is the constraint most likely to be contradicted by an expansive
     // persona, so it gets the recency position.
-    const p = normaliseProfile('demo', {
+    const p = normalizeProfile('demo', {
       voice: 'VOICE', rules: 'RULES', modes: { deep: 'MODE-DEEP' },
       grounding: { mode: 'strict' },
     });
@@ -205,7 +205,7 @@ describe('grounding modes', () => {
 });
 
 describe('prompt assembly', () => {
-  const profile = normaliseProfile('demo', {
+  const profile = normalizeProfile('demo', {
     voice: 'VOICE-TEXT',
     rules: 'RULES-TEXT',
     grounding: 'GROUNDING-TEXT',
@@ -231,7 +231,7 @@ describe('prompt assembly', () => {
     assert.equal(renderConceptMap(profile, map), '', 'disabled subject must render nothing');
     assert.ok(!buildSystemPrompt(profile, { conceptMap: map }).includes('grace'));
 
-    const on = normaliseProfile('demo', { voice: 'v', conceptMap: { enabled: true, label: 'MY MAP' } });
+    const on = normalizeProfile('demo', { voice: 'v', conceptMap: { enabled: true, label: 'MY MAP' } });
     const rendered = renderConceptMap(on, map);
     assert.ok(rendered.includes('MY MAP'));
     assert.ok(rendered.includes('grace'));
@@ -239,13 +239,13 @@ describe('prompt assembly', () => {
   });
 
   test('an enabled subject with no concept map yet renders nothing', () => {
-    const on = normaliseProfile('demo', { voice: 'v', conceptMap: { enabled: true } });
+    const on = normalizeProfile('demo', { voice: 'v', conceptMap: { enabled: true } });
     assert.equal(renderConceptMap(on, null), '');
   });
 
   test('renderExtractSchema turns the extract block into schema lines', () => {
     assert.equal(renderExtractSchema(profile), '', 'no extract fields -> empty');
-    const withExtract = normaliseProfile('demo', { voice: 'v', extract: { specs: 'torque values' } });
+    const withExtract = normalizeProfile('demo', { voice: 'v', extract: { specs: 'torque values' } });
     const schema = renderExtractSchema(withExtract);
     assert.ok(schema.includes('"specs"'));
     assert.ok(schema.includes('torque values'));

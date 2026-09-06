@@ -5,7 +5,7 @@
  * citation impossible: you can retrieve the right passage but not tell the
  * reader where to look. Every chunk here carries the page it came from, so the
  * UI can link a citation straight to that page of the original file — the
- * behaviour ask_cooter gets from its per-page ingestion.
+ * behavior ask_cooter gets from its per-page ingestion.
  *
  * Two page numbers are kept, for the reason ask_cooter documents: `pdfPage` is
  * the position in the file (0-based internally, shown 1-based) and is what a

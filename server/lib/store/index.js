@@ -69,8 +69,8 @@ export function toVectorArray(vec) {
   throw new Error('embedding must be an array, a typed array, or null');
 }
 
-/** Normalise a caller-supplied chunk to the canonical shape. */
-export function normaliseChunk(chunk, i = 0) {
+/** Normalize a caller-supplied chunk to the canonical shape. */
+export function normalizeChunk(chunk, i = 0) {
   if (!chunk || typeof chunk.text !== 'string') {
     throw new Error(`chunk[${i}] is missing required field: text`);
   }

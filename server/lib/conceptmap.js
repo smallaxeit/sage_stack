@@ -19,7 +19,7 @@ const MAX_CONCEPTS = 150;
 const MAX_ARGUMENTS = 60;
 
 /** Frequency-rank the concepts and themes the analysis pass produced. */
-export function summariseCorpus(chunks) {
+export function summarizeCorpus(chunks) {
   const conceptFreq = new Map();
   const themeFreq = new Map();
   const sources = new Set();
@@ -47,7 +47,7 @@ export function summariseCorpus(chunks) {
     concepts: byFreq(conceptFreq, MAX_CONCEPTS),
     themes: byFreq(themeFreq, 40),
     arguments: args.slice(0, MAX_ARGUMENTS),
-    analysedChunks: chunks.filter(c => (c.concepts || []).length > 0).length,
+    analyzedChunks: chunks.filter(c => (c.concepts || []).length > 0).length,
     totalChunks: chunks.length,
   };
 }
@@ -114,7 +114,7 @@ export async function rebuildConceptMap({ profile, store, client, onProgress = (
   const chunks = await store.getChunks(slug);
   if (chunks.length === 0) throw new Error(`Subject "${slug}" has no chunks.`);
 
-  const summary = summariseCorpus(chunks);
+  const summary = summarizeCorpus(chunks);
   if (summary.concepts.length === 0) {
     throw new Error(
       `Subject "${slug}" has ${chunks.length} chunks but no extracted concepts, so there is ` +
@@ -126,7 +126,7 @@ export async function rebuildConceptMap({ profile, store, client, onProgress = (
   onProgress({
     stage: 'build',
     concepts: summary.concepts.length,
-    analysedChunks: summary.analysedChunks,
+    analyzedChunks: summary.analyzedChunks,
     totalChunks: summary.totalChunks,
   });
 
@@ -154,7 +154,7 @@ export async function rebuildConceptMap({ profile, store, client, onProgress = (
     builtAt: new Date().toISOString(),
     builtFrom: {
       chunks: summary.totalChunks,
-      analysedChunks: summary.analysedChunks,
+      analyzedChunks: summary.analyzedChunks,
       sources: summary.sources.length,
       model,
     },

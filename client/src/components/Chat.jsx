@@ -15,7 +15,7 @@ import Message from './Message';
 
 const DEFAULT_SUGGESTIONS = [
   'What is this collection about?',
-  'Summarise the main themes.',
+  'Summarize the main themes.',
   'What topics can I ask about?',
 ];
 
@@ -54,7 +54,8 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
 
     setInput('');
     if (taRef.current) { taRef.current.style.height = 'auto'; }
-    setMessages(m => [...m, { role: 'user', content: q }, { role: 'assistant', content: '', streaming: true }]);
+    setMessages(m => [...m, { role: 'user', content: q },
+      { role: 'assistant', content: '', streaming: true, stage: 'sending', startedAt: Date.now() }]);
     setBusy(true);
 
     const ctrl = new AbortController();
@@ -88,11 +89,18 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
           if (!frame.startsWith('data: ')) continue;
           const ev = JSON.parse(frame.slice(6));
 
-          if (ev.chunk) {
+          if (ev.stage) {
+            setMessages(m => {
+              const next = [...m];
+              next[next.length - 1] = { ...next[next.length - 1], stage: ev.stage };
+              return next;
+            });
+          } else if (ev.chunk) {
             setMessages(m => {
               const next = [...m];
               const last = next[next.length - 1];
-              next[next.length - 1] = { ...last, content: last.content + ev.chunk };
+              // The first token replaces the indicator.
+              next[next.length - 1] = { ...last, content: last.content + ev.chunk, stage: null };
               return next;
             });
           } else if (ev.error) {
@@ -102,6 +110,7 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
                 ...next[next.length - 1],
                 content: (next[next.length - 1].content || '') + `\n\n**${ev.error}**`,
                 streaming: false,
+                stage: null,
               };
               return next;
             });
@@ -114,6 +123,7 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
                 sources: ev.sources || [],
                 chips: ev.chips || [],
                 streaming: false,
+                stage: null,
               };
               return next;
             });
@@ -129,13 +139,14 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
           ...last,
           content: last.content + (aborted ? '\n\n*(stopped)*' : `\n\n**${err.message}**`),
           streaming: false,
+          stage: null,
         };
         return next;
       });
     } finally {
       setBusy(false);
       abortRef.current = null;
-      setMessages(m => m.map(x => (x.streaming ? { ...x, streaming: false } : x)));
+      setMessages(m => m.map(x => (x.streaming ? { ...x, streaming: false, stage: null } : x)));
     }
   }, [busy, sessionId, mode, subject]);
 
@@ -187,6 +198,8 @@ export default function Chat({ ready, subject, subjectName, suggestions, onOpenD
                 sources={m.sources}
                 chips={m.chips}
                 streaming={m.streaming}
+                stage={m.stage}
+                startedAt={m.startedAt}
                 onChipClick={(chip) => send(`Tell me more about: ${chip}`)}
                 onOpenDoc={onOpenDoc}
                 onOpenCite={onOpenCite}

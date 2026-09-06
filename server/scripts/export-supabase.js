@@ -246,7 +246,7 @@ async function main() {
 
   // --- Manifest --------------------------------------------------------------
   const sources = {};
-  // Cheap second pass over the JSONL we just wrote, to summarise per-source counts.
+  // Cheap second pass over the JSONL we just wrote, to summarize per-source counts.
   const jsonl = await fs.readFile(path.join(outDir, 'chunks.jsonl'), 'utf8');
   for (const line of jsonl.split('\n')) {
     if (!line) continue;
@@ -260,7 +260,7 @@ async function main() {
     origin: { type: 'supabase', url: SUPABASE_URL },
     embed: {
       // Recorded from what we actually found, not assumed. NOTE: the running
-      // build used voyage-3; ARCHITECTURE_PLAN.md standardises on voyage-3.5,
+      // build used voyage-3; ARCHITECTURE_PLAN.md standardizes on voyage-3.5,
       // which is a re-embed, not a swap. These vectors are voyage-3.
       model: 'voyage-3',
       dim,

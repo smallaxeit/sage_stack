@@ -20,7 +20,7 @@
  */
 
 import pg from 'pg';
-import { assertValidSlug, normaliseChunk, toVectorArray } from './index.js';
+import { assertValidSlug, normalizeChunk, toVectorArray } from './index.js';
 
 /** pgvector's text input format. Cast the parameter as ::vector at every use. */
 function toVectorLiteral(vec) {
@@ -211,7 +211,7 @@ export function createPostgresStore(opts = {}) {
       const subject = await requireSubject(slug);
       const dim = subject.dim;
 
-      const incoming = input.map(normaliseChunk);
+      const incoming = input.map(normalizeChunk);
       for (const c of incoming) {
         if (c.embedding && c.embedding.length !== dim) {
           throw new Error(`chunk ${c.id}: embedding has ${c.embedding.length} dims, subject "${slug}" expects ${dim}`);
@@ -240,7 +240,7 @@ export function createPostgresStore(opts = {}) {
                pdf_page     = EXCLUDED.pdf_page,
                printed_page = EXCLUDED.printed_page,
                -- keep an existing embedding when the incoming chunk has none,
-               -- matching the files driver's hasEmbedding behaviour
+               -- matching the files driver's hasEmbedding behavior
                embedding    = COALESCE(EXCLUDED.embedding, "${slug}".chunks.embedding)`,
             [
               c.id, c.documentId, c.source, c.chunkIndex, c.text, c.summary, c.difficulty,

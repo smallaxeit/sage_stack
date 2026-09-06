@@ -12,7 +12,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEmbedder, assertEmbedderMatchesSubject, l2norm, normalise, EMBED_DRIVERS } from './index.js';
+import { createEmbedder, assertEmbedderMatchesSubject, l2norm, normalize, EMBED_DRIVERS } from './index.js';
 import { createVoyageEmbedder } from './voyage.js';
 import { createLocalEmbedder, KNOWN_DIMS } from './local.js';
 
@@ -229,10 +229,10 @@ describe('the mismatch guard', () => {
 });
 
 describe('vector helpers', () => {
-  test('l2norm and normalise', () => {
+  test('l2norm and normalize', () => {
     assert.equal(l2norm([3, 4]), 5);
-    const v = normalise([3, 4]);
+    const v = normalize([3, 4]);
     assert.ok(Math.abs(l2norm(v) - 1) < 1e-12);
-    assert.deepEqual(normalise([0, 0]), [0, 0], 'a zero vector is left alone');
+    assert.deepEqual(normalize([0, 0]), [0, 0], 'a zero vector is left alone');
   });
 });

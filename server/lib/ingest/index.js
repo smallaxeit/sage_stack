@@ -14,7 +14,7 @@
  *
  *   parse + chunk   always works, no keys
  *   embed           needs VOYAGE_API_KEY, or EMBED_DRIVER=local (no key)
- *   analyse         needs ANTHROPIC_API_KEY — enrichment only
+ *   analyze         needs ANTHROPIC_API_KEY — enrichment only
  *
  * Without embeddings a document is stored but not searchable, which is reported
  * as a warning rather than passed off as success.
@@ -75,11 +75,11 @@ function parseJsonLoose(text) {
 }
 
 /**
- * Analyse one chunk. A failure propagates so it can be COUNTED — silently
+ * Analyze one chunk. A failure propagates so it can be COUNTED — silently
  * storing an empty analysis leaves a chunk invisible to concept boosting and
  * absent from the concept map, with nothing reporting how many were affected.
  */
-async function analyseChunk(profile, chunk, client, model) {
+async function analyzeChunk(profile, chunk, client, model) {
   const res = await client.messages.create({
     model,
     max_tokens: 4096,
@@ -171,16 +171,16 @@ export async function ingestDocument({
   }));
 
   // ─── Analysis (optional) ───────────────────────────────────────────────────
-  let analysed = 0;
+  let analyzed = 0;
   let analysisFailed = 0;
   if (analysisClient) {
     const model = profile.analysis?.model || 'claude-haiku-4-5';
-    onProgress({ stage: 'analyse', filename: safeName, done: 0, total: chunks.length });
+    onProgress({ stage: 'analyze', filename: safeName, done: 0, total: chunks.length });
     const results = await mapWithConcurrency(chunks, ANALYSIS_CONCURRENCY, async (c) => {
       let r = null;
-      try { r = await analyseChunk(profile, c, analysisClient, model); analysed++; }
+      try { r = await analyzeChunk(profile, c, analysisClient, model); analyzed++; }
       catch { analysisFailed++; }
-      onProgress({ stage: 'analyse', filename: safeName, done: analysed + analysisFailed, total: chunks.length });
+      onProgress({ stage: 'analyze', filename: safeName, done: analyzed + analysisFailed, total: chunks.length });
       return r;
     });
     chunks = chunks.map((c, i) => (results[i] ? { ...c, ...results[i] } : c));
@@ -232,7 +232,7 @@ export async function ingestDocument({
     paged,
     pages: pages.length,
     chunks: chunks.length,
-    analysed,
+    analyzed,
     analysisFailed,
     embedded,
     searchable: embedded > 0,

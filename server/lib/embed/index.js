@@ -86,8 +86,8 @@ export function l2norm(vec) {
   return Math.sqrt(s);
 }
 
-/** Normalise in place to unit length. No-op on a zero vector. */
-export function normalise(vec) {
+/** Normalize in place to unit length. No-op on a zero vector. */
+export function normalize(vec) {
   const n = l2norm(vec);
   if (n === 0) return vec;
   for (let i = 0; i < vec.length; i++) vec[i] /= n;

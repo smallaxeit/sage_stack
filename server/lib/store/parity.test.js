@@ -129,7 +129,7 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       assert.deepEqual(chunks[1].extras, {});
     });
 
-    test('getChunks honours limit and offset', async () => {
+    test('getChunks honors limit and offset', async () => {
       const page = await store.getChunks(slug, { limit: 2, offset: 1 });
       assert.deepEqual(page.map(c => c.id), ['c2', 'c3']);
     });
@@ -200,7 +200,7 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       assert.ok(!('embedding' in results[0]), 'search results must not carry embeddings');
     });
 
-    test('searchByVector honours topK', async () => {
+    test('searchByVector honors topK', async () => {
       assert.equal((await store.searchByVector(slug, QUERY, 1)).length, 1);
     });
 

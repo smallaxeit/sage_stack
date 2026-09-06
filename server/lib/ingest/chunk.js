@@ -14,11 +14,11 @@
 
 /** Split text into chunks. Never returns [] for non-empty input. */
 export function chunkText(text, { chunkTarget = 1400, chunkMax = 2200 } = {}) {
-  const normalised = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-  if (!normalised) return [];
+  const normalized = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+  if (!normalized) return [];
 
-  const paragraphs = normalised.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-  if (paragraphs.length === 0) return [normalised];
+  const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  if (paragraphs.length === 0) return [normalized];
 
   const chunks = [];
   let buf = [];
@@ -68,9 +68,9 @@ export function chunkPages(pages, { chunkTarget = 1400, chunkMax = 2200 } = {}) 
   // Flatten to paragraphs, each remembering its page.
   const paras = [];
   for (const page of pages) {
-    const normalised = String(page.text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
-    if (!normalised) continue;
-    for (const p of normalised.split(/\n{2,}/).map(s => s.trim()).filter(Boolean)) {
+    const normalized = String(page.text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (!normalized) continue;
+    for (const p of normalized.split(/\n{2,}/).map(s => s.trim()).filter(Boolean)) {
       paras.push({ text: p, pdfPage: page.pdfPage ?? null, printedPage: page.printedPage ?? null });
     }
   }

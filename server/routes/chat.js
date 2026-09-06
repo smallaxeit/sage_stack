@@ -163,20 +163,41 @@ router.post('/chat', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  // Proxies buffer by default, which defeats streaming entirely.
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
+
+  // Retrieval plus a cold model call can be 5-30 seconds before the first
+  // token. A silent socket for that long is indistinguishable from a hang, and
+  // a dev proxy will report it as ECONNRESET. So say something immediately,
+  // then keep the connection warm until real tokens arrive.
+  const send = (obj) => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(obj)}\n\n`); };
+  send({ stage: 'retrieving' });
+
+  const keepalive = setInterval(() => {
+    // An SSE comment: keeps intermediaries from timing the socket out, and is
+    // ignored by EventSource and by our own parser alike.
+    if (!res.writableEnded) res.write(': keepalive\n\n');
+  }, 10_000);
+
+  // If the user navigates away or hits Stop, don't keep generating.
+  let aborted = false;
+  req.on('close', () => { aborted = true; clearInterval(keepalive); });
 
   try {
     const { text: reply, sources, chips } = await teacher.chatStream(
       history,
-      chunk => res.write(`data: ${JSON.stringify({ chunk })}\n\n`),
-      { mode },
+      chunk => send({ chunk }),
+      { mode, onStage: (stage) => send({ stage }) },
     );
+
+    if (aborted) return;   // client is gone; nothing to save or send
 
     history.push({ role: 'assistant', content: reply });
     if (history.length > 40) history.splice(0, 2);
     await rt.store.saveSession(key, history);
 
-    res.write(`data: ${JSON.stringify({ done: true, sessionId: id, subject, sources, chips })}\n\n`);
+    send({ done: true, sessionId: id, subject, sources, chips });
     res.end();
   } catch (err) {
     console.error(`[${subject}] chat error:`, err);
@@ -184,8 +205,10 @@ router.post('/chat', async (req, res) => {
     // an embedder mismatch is actionable. But the raw SDK message is often a
     // JSON blob, which is unreadable in a chat bubble, so translate the ones
     // that have a clear cause and a clear fix.
-    res.write(`data: ${JSON.stringify({ error: explainChatError(err) })}\n\n`);
+    send({ error: explainChatError(err) });
     res.end();
+  } finally {
+    clearInterval(keepalive);
   }
 });
 

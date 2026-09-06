@@ -2,7 +2,7 @@
   "slug": "softail",
   "name": "Softail Service Manual",
   "tagline": "1984–1999 Harley-Davidson Softail repair reference",
-  "_comment": "This subject CONNECTS to the existing ask_cooter database rather than copying it. That corpus is already fully built — 644 vision-extracted pages, 1063 chunks, all embedded with voyage-3.5 — and re-running it would cost real money for no gain. The store is read-only: writes throw rather than silently no-op. Note embed.model is voyage-3.5 to match the vectors already in that database; a mismatch here would make the mismatch guard refuse every query, which is the correct behaviour.",
+  "_comment": "This subject CONNECTS to the existing ask_cooter database rather than copying it. That corpus is already fully built — 644 vision-extracted pages, 1063 chunks, all embedded with voyage-3.5 — and re-running it would cost real money for no gain. The store is read-only: writes throw rather than silently no-op. Note embed.model is voyage-3.5 to match the vectors already in that database; a mismatch here would make the mismatch guard refuse every query, which is the correct behavior.",
   "store": {
     "driver": "askcooter",
     "connectionStringEnv": "ASKCOOTER_DATABASE_URL",

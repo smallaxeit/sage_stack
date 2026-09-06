@@ -3,7 +3,7 @@
  *
  * Serving the original file is what makes a citation useful: the UI links
  * "p.419" to the actual page of the actual PDF, so the reader can check the
- * source rather than trusting the answer. Browsers' built-in PDF viewers honour
+ * source rather than trusting the answer. Browsers' built-in PDF viewers honor
  * a #page=N fragment, so no client-side PDF library is needed.
  *
  * Every route is scoped to one subject. Paths are built from a validated slug
@@ -65,9 +65,9 @@ router.get('/:subject', async (req, res) => {
     const chunks = await rt.getStore(profile).getChunks(subject).catch(() => []);
     const bySource = new Map();
     for (const c of chunks) {
-      const e = bySource.get(c.source) || { chunks: 0, analysed: 0, pages: new Set() };
+      const e = bySource.get(c.source) || { chunks: 0, analyzed: 0, pages: new Set() };
       e.chunks++;
-      if (c.summary) e.analysed++;
+      if (c.summary) e.analyzed++;
       if (c.pdfPage != null) e.pages.add(c.pdfPage);
       bySource.set(c.source, e);
     }
@@ -86,7 +86,7 @@ router.get('/:subject', async (req, res) => {
       return {
         filename: name,
         chunks: counts?.chunks ?? 0,
-        analysed: counts?.analysed ?? 0,
+        analyzed: counts?.analyzed ?? 0,
         pages: counts ? counts.pages.size : 0,
         bytes: file?.bytes ?? null,
         addedAt: file?.addedAt ?? null,
@@ -111,7 +111,7 @@ router.get('/:subject/file/:filename', async (req, res) => {
 
     const ext = path.extname(full).toLowerCase();
     res.setHeader('Content-Type', CONTENT_TYPES[ext] || 'application/octet-stream');
-    // inline, so the browser's PDF viewer opens it and honours #page=N
+    // inline, so the browser's PDF viewer opens it and honors #page=N
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(path.basename(full))}"`);
     res.setHeader('Cache-Control', 'private, max-age=3600');
     createReadStream(full).pipe(res);

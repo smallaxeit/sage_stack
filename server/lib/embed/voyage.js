@@ -1,7 +1,7 @@
 /**
  * embed/voyage.js — Voyage AI embeddings.
  *
- * Standardised on voyage-3.5 (ARCHITECTURE_PLAN.md §4.5). The old build used
+ * Standardized on voyage-3.5 (ARCHITECTURE_PLAN.md §4.5). The old build used
  * voyage-3; both are 1024-dim so the schema is identical, but VECTORS FROM THE
  * TWO MODELS ARE NOT INTERCHANGEABLE. Switching is a re-embed, not a swap —
  * which is why the subject manifest records the model and the mismatch guard
@@ -10,7 +10,7 @@
  * Anthropic has no embeddings API; Voyage is the recommended pairing.
  */
 
-import { normalise } from './index.js';
+import { normalize } from './index.js';
 
 const VOYAGE_API = 'https://api.voyageai.com/v1/embeddings';
 
@@ -106,4 +106,4 @@ export function createVoyageEmbedder(opts = {}) {
   };
 }
 
-export { normalise };
+export { normalize };

@@ -51,7 +51,7 @@ environment allows rather than failing whole:
 |---|---|---|
 | parse + chunk | nothing | — |
 | embed | `VOYAGE_API_KEY`, or `EMBED_DRIVER=local` | stored but **not searchable** |
-| analyse | `ANTHROPIC_API_KEY` | no concepts, summaries, or subject-specific fields |
+| analyze | `ANTHROPIC_API_KEY` | no concepts, summaries, or subject-specific fields |
 
 Anything skipped is reported, not hidden.
 
@@ -250,7 +250,7 @@ server/
     conceptmap.js                concept map build
     store/                       files | postgres | askcooter  (+ parity tests)
     embed/                       voyage | local               (+ tests)
-    ingest/                      parse → chunk → analyse → embed → store
+    ingest/                      parse → chunk → analyze → embed → store
   routes/                        chat | admin | documents
   scripts/                       bootstrap-postgres, export/import
 
