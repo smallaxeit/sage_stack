@@ -382,6 +382,14 @@ export function createPostgresStore(opts = {}) {
       return r.rowCount > 0;
     },
 
+    /** Remove chunks by id. */
+    async deleteChunks(slug, ids) {
+      await requireSubject(slug);
+      if (!ids.length) return 0;
+      const r = await q(`DELETE FROM "${slug}".chunks WHERE id = ANY($1::text[])`, [ids.map(String)]);
+      return r.rowCount;
+    },
+
     async close() { await pool.end(); },
   };
 }

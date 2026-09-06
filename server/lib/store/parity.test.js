@@ -228,6 +228,30 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       assert.equal(await store.deleteSession(id), false);
     });
 
+    test('deleteChunks removes only the named chunks', async () => {
+      const before = await store.countChunks(slug);
+      const removed = await store.deleteChunks(slug, ['c2']);
+      assert.equal(removed, 1);
+
+      const after = await store.getChunks(slug);
+      assert.equal(after.length, before.total - 1);
+      assert.ok(!after.some(c => c.id === 'c2'), 'c2 survived');
+      assert.deepEqual(after.map(c => c.id), ['c1', 'c3', 'c4'], 'order must survive a delete');
+
+      // The dense files layout reindexes on delete; prove search still maps
+      // rows to the right chunks afterwards.
+      const hits = await store.searchByVector(slug, QUERY, 10);
+      assert.equal(hits[0].id, 'c1');
+      assert.ok(!hits.some(h => h.id === 'c2'));
+      for (const h of hits) {
+        const src = after.find(c => c.id === h.id);
+        assert.equal(h.text, src.text, `row/chunk mismatch after delete for ${h.id}`);
+      }
+
+      assert.equal(await store.deleteChunks(slug, ['nope']), 0);
+      assert.equal(await store.deleteChunks(slug, []), 0);
+    });
+
     test('rejects an invalid slug', async () => {
       for (const bad of ['Bad-Slug', '1leading', '../escape', '', 'a'.repeat(64)]) {
         await assert.rejects(() => store.initSubject(bad, { dim: DIM }), /Invalid subject slug/);

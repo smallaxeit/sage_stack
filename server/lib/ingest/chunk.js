@@ -52,3 +52,62 @@ export function chunkText(text, { chunkTarget = 1400, chunkMax = 2200 } = {}) {
 export function approxTokens(text) {
   return Math.max(1, Math.ceil(String(text || '').length / 4));
 }
+
+/**
+ * Chunk a paged document, recording where each chunk starts.
+ *
+ * Chunks are packed ACROSS page boundaries rather than reset at each page.
+ * Prose runs over page breaks, and resetting would produce a torrent of tiny
+ * fragments for a 600-page book. Each chunk records the page its first
+ * paragraph came from, which is what a citation links to.
+ *
+ * (A service manual is the opposite case -- its pages are self-contained
+ * units -- which is what vision ingestion will handle in Phase 4.)
+ */
+export function chunkPages(pages, { chunkTarget = 1400, chunkMax = 2200 } = {}) {
+  // Flatten to paragraphs, each remembering its page.
+  const paras = [];
+  for (const page of pages) {
+    const normalised = String(page.text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (!normalised) continue;
+    for (const p of normalised.split(/\n{2,}/).map(s => s.trim()).filter(Boolean)) {
+      paras.push({ text: p, pdfPage: page.pdfPage ?? null, printedPage: page.printedPage ?? null });
+    }
+  }
+  if (paras.length === 0) return [];
+
+  const chunks = [];
+  let buf = [];
+  let size = 0;
+  let start = null;
+
+  const flush = () => {
+    if (!buf.length) return;
+    chunks.push({
+      text: buf.join('\n\n'),
+      pdfPage: start.pdfPage,
+      printedPage: start.printedPage,
+    });
+    buf = [];
+    size = 0;
+    start = null;
+  };
+
+  for (const para of paras) {
+    if (para.text.length >= chunkMax) {
+      flush();
+      chunks.push({ text: para.text, pdfPage: para.pdfPage, printedPage: para.printedPage });
+      continue;
+    }
+    if (size + para.text.length > chunkMax && buf.length) flush();
+
+    if (!buf.length) start = para;
+    buf.push(para.text);
+    size += para.text.length + 2;
+
+    if (size >= chunkTarget) flush();
+  }
+  flush();
+
+  return chunks;
+}
