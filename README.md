@@ -31,8 +31,8 @@ Two areas ship as working examples:
 
 | Subject | What it is | Where its data lives |
 |---|---|---|
-| `theology` | 12 religious and philosophical texts, 4,997 chunks | local Postgres |
-| `softail` | A scanned Harley service manual, 1,063 chunks over 644 pages | connects to an existing ask_cooter database, read-only |
+| `theology` | 12 religious and philosophical texts, 4,997 chunks | Postgres |
+| `softail` | A scanned Harley service manual, 1,063 chunks over 644 pages | Postgres |
 
 ---
 
