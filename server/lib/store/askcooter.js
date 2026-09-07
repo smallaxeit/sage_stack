@@ -187,6 +187,11 @@ export function createAskCooterStore(opts = {}) {
 
     async getConceptMap() { return null; },
 
+    // A borrowed database has nowhere to put our settings, and pretending to
+    // save them would lose a user's selection silently.
+    async getSettings() { return {}; },
+    saveSettings: readOnly('saveSettings'),
+
     // ─── Writes are refused, loudly ──────────────────────────────────────────
     initSubject:   async (slug, { dim: d } = {}) => {
       // Tolerated as a no-op ONLY when it matches, so ingest-time guards that

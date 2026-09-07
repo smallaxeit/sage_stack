@@ -314,6 +314,22 @@ export function createFilesStore(opts = {}) {
       catch { return null; }
     },
 
+    // ─── Settings ────────────────────────────────────────────────────────────
+    // Small mutable state owned by the subject, not by a conversation. Kept in
+    // its own file rather than the manifest, which the ingest path rewrites
+    // wholesale — settings would be lost on the next build.
+
+    async getSettings(slug) {
+      try { return JSON.parse(await fs.readFile(p(slug, 'settings.json'), 'utf8')); }
+      catch { return {}; }
+    },
+
+    async saveSettings(slug, settings) {
+      await fs.mkdir(subjectDir(slug), { recursive: true });
+      await fs.writeFile(p(slug, 'settings.json'), JSON.stringify(settings, null, 2));
+      return settings;
+    },
+
     // ─── Sessions ────────────────────────────────────────────────────────────
     // Session ids come from the client, so they are hashed rather than used as
     // filenames directly — "../../etc" must never become a path.

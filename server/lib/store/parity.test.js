@@ -215,6 +215,30 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       assert.deepEqual(await store.getConceptMap(slug), map);
     });
 
+    test('settings round-trip and are subject-scoped', async () => {
+      // Holds state belonging to a knowledge area rather than a conversation —
+      // the Rx subject's "currently taking" list is the first use, and it has
+      // to survive a new chat and a restart.
+      assert.deepEqual(await store.getSettings(slug), {}, 'a fresh subject has none');
+
+      await store.saveSettings(slug, { activeDrugs: ['atorvastatin', 'metformin'] });
+      assert.deepEqual((await store.getSettings(slug)).activeDrugs,
+        ['atorvastatin', 'metformin']);
+
+      // Replaces wholesale, so removing an entry actually removes it.
+      await store.saveSettings(slug, { activeDrugs: ['metformin'] });
+      assert.deepEqual((await store.getSettings(slug)).activeDrugs, ['metformin']);
+
+      const other = `paritytest_s_${rnd()}`;
+      await store.initSubject(other, { dim: DIM });
+      try {
+        assert.deepEqual(await store.getSettings(other), {},
+          "another subject must not see this one's settings");
+      } finally {
+        await store.dropSubject(other);
+      }
+    });
+
     test('sessions round-trip', async () => {
       const id = `sess-${rnd()}`;
       assert.equal(await store.getSession(id), null);

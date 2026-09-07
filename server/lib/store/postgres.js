@@ -88,8 +88,12 @@ export function createPostgresStore(opts = {}) {
           embed_model text,
           created_at  timestamptz NOT NULL DEFAULT now(),
           updated_at  timestamptz,
-          concept_map jsonb
+          concept_map jsonb,
+          settings    jsonb NOT NULL DEFAULT '{}'::jsonb
         )`);
+      // Added after the table shipped, so existing databases need it too.
+      await q(`ALTER TABLE public.sagestack_subjects
+               ADD COLUMN IF NOT EXISTS settings jsonb NOT NULL DEFAULT '{}'::jsonb`);
       await q(`
         CREATE TABLE IF NOT EXISTS public.sagestack_sessions (
           id         text PRIMARY KEY,
@@ -355,6 +359,21 @@ export function createPostgresStore(opts = {}) {
       await requireSubject(slug);
       const r = await q(`SELECT concept_map FROM public.sagestack_subjects WHERE slug = $1`, [slug]);
       return r.rows[0]?.concept_map ?? null;
+    },
+
+    // ─── Settings ────────────────────────────────────────────────────────────
+
+    async getSettings(slug) {
+      await requireSubject(slug);
+      const r = await q(`SELECT settings FROM public.sagestack_subjects WHERE slug = $1`, [slug]);
+      return r.rows[0]?.settings ?? {};
+    },
+
+    async saveSettings(slug, settings) {
+      await requireSubject(slug);
+      await q(`UPDATE public.sagestack_subjects SET settings = $2::jsonb WHERE slug = $1`,
+              [slug, JSON.stringify(settings)]);
+      return settings;
     },
 
     // ─── Sessions ────────────────────────────────────────────────────────────

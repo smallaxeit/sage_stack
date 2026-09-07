@@ -6,11 +6,10 @@ SageStack turns a pile of documents into something you can ask questions of —
 and every answer cites the page you can open to verify it.
 
 **Where it stores things and where it runs are both your choice**, and they are
-independent of each other. Storage is a driver: plain files, a local Postgres,
-a hosted one, Supabase, or a read-only connection to a corpus someone else
-built. Deployment is an Express app in a container — a laptop, a VPS, or any
-platform that runs Node. Nothing in the design assumes local, and nothing
-assumes hosted.
+independent of each other. Storage is either files on disk or Postgres —
+wherever that Postgres happens to be. Deployment is an Express app in a
+container: a laptop, a VPS, or any platform that runs Node. Nothing in the
+design assumes local, and nothing assumes hosted.
 
 ---
 
@@ -31,7 +30,7 @@ Two areas ship as working examples:
 
 | Subject | What it is | Where its data lives |
 |---|---|---|
-| `theology` | 12 religious and philosophical texts, 4,997 chunks | Postgres |
+| `theology` | 12 religious and philosophical texts, 4,997 chunks | Postgres / Supabase |
 | `softail` | A scanned Harley service manual, 1,063 chunks over 644 pages | Postgres |
 
 ---
@@ -104,11 +103,18 @@ interchangeable.
 
 ### Storage options
 
+There are two backends: files, and Postgres.
+
 | `KB_STORE` | Backend | When |
 |---|---|---|
-| `files` | JSON + a binary vector sidecar on disk | default; no database, clone and run |
-| `postgres` | any Postgres with pgvector | local, RDS, Neon, Railway, **Supabase** — it is one connection string |
-| `askcooter` | an existing ask_cooter corpus, read-only | reuse a corpus rather than rebuilding it |
+| `files` | Files on disk — JSON plus a binary vector sidecar | default; no database, clone and run |
+| `postgres` | Postgres + pgvector | anywhere it runs — local, RDS, Neon, Railway, Supabase |
+| `askcooter` | Postgres + pgvector, read-only | documents already loaded into a different schema |
+
+`askcooter` is not a third technology. It is the same Postgres, reading a
+schema this app did not create, so documents that are already loaded can be
+used where they are instead of copied. It refuses writes rather than dropping
+them silently.
 
 **Supabase is just Postgres.** Point the `postgres` driver at the connection
 string from Supabase's dashboard (Project Settings → Database) and enable
@@ -127,9 +133,9 @@ pooler does not support the prepared statements the driver relies on.
 > Not yet exercised against a live Supabase project on this repo — the path is
 > ordinary Postgres, but treat the first run as a verification.
 
-A subject can also carry its **own** `store` block, so different knowledge areas
-can live in different places — one on local disk, one in Supabase, one reading
-a colleague's database. See `subjects/softail/subject.json`.
+A subject can also carry its **own** `store` block, so different knowledge
+areas can live in different databases — one in the app's own, another in a
+database built by something else. See `subjects/softail/subject.json`.
 
 ---
 
@@ -190,8 +196,8 @@ Choosing a storage backend is most of the deployment decision:
 
 | Deployment | Storage that fits |
 |---|---|
-| Laptop / single machine | `files`, or a local Postgres |
-| Container on a VPS | local Postgres, or a managed one |
+| Laptop / single machine | `files`, or Postgres |
+| Container on a VPS | Postgres |
 | Ephemeral / serverless filesystem | **not** `files` — the disk does not survive; use Postgres |
 | Multi-instance | Postgres, so instances share state |
 
@@ -200,7 +206,8 @@ with the container. With Postgres, nothing needs to persist locally.
 
 Two things to set for anything public, both off by default:
 
-- `ADMIN_KEY` — without it, the admin and upload routes are **unauthenticated**
+- `ADMIN_KEY` — without it, upload, build, delete and the admin actions are
+  **unauthenticated**. Reading stays open either way.
 - `DEFAULT_SUBJECT` — otherwise a request that names no subject is rejected
   once more than one exists
 
@@ -254,20 +261,26 @@ server/
     runtime.js                   subject registry — profile + store + embedder
     subjects.js                  profile loading, validation, prompt assembly
     claude.js                    retrieval-augmented answering, per subject
+    rewrite.js                   makes a follow-up question standalone before search
     conceptmap.js                concept map build
+    auth.js                      the admin-key gate
     store/                       files | postgres | askcooter  (+ parity tests)
     embed/                       voyage | local               (+ tests)
-    ingest/                      parse → chunk → analyze → embed → store
+    ingest/                      parse → chunk → analyze → embed → store,
+                                 plus render + vision for scans
   routes/                        chat | admin | documents
   scripts/                       bootstrap-postgres, export/import
 
 client/src/
-  App.jsx                        shell, sidebar, subject switching
+  App.jsx                        shell, sidebar, subject and conversation switching
+  api.js                         fetch with the admin key attached
   components/
     Chat.jsx                     streaming chat
     Message.jsx                  markdown + inline [p.N] citation links
     PageViewer.jsx               scan | extracted text, zoom, page flip
+    DocumentBrowser.jsx          browse documents and open any page
     KnowledgePanel.jsx           what is loaded, and uploading more
+    AdminPanel.jsx               per-subject stats and pipeline actions
 ```
 
 ---

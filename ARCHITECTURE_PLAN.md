@@ -56,7 +56,7 @@ are worth taking wholesale:
 | **Structured `specs` jsonb + a direct lookup path** | Independent confirmation of the domain-extras pattern in §5 — and a reminder that some queries ("torque spec for X") want SQL, not vector search. |
 | **Env-driven model + embedding dim** | Already the right shape. |
 
-And its explicitly logged limitation — *"Single corpus per DB — results rank across
+And its explicitly logged limitation — *"Single set of documents per DB — results rank across
 everything in the DB; switch PDFs via a fresh `DATABASE_URL`"* (DESIGN.md §6.2) — is
 precisely the problem this plan exists to fix. **SageStack v2 is ask_cooter
 generalized to multi-subject, in Node.**
@@ -65,7 +65,7 @@ generalized to multi-subject, in Node.**
 
 ## 3. The finding that changes ingestion
 
-SageStack parses PDFs with `pdf-parse` — text extraction only. ask_cooter's corpus was
+SageStack parses PDFs with `pdf-parse` — text extraction only. ask_cooter's documents were
 **651 pages, 191 MB, scanned images with ~0 extractable text.** Sampled pages returned
 zero characters.
 
@@ -130,7 +130,7 @@ Per subject, under `data/subjects/<slug>/`:
 The binary sidecar matters. 10k chunks × 1024 dims as JSON numbers is ~80 MB of
 parse-on-boot; as `Float32Array` it is 40 MB `readFile` straight into a typed array.
 Brute-force dot product over 10k × 1024 floats is a few milliseconds — comfortably fast
-to roughly 50k chunks per subject, which is far past where these corpora sit.
+to roughly 50k chunks per subject, which is far past where these sit.
 
 Zero install, zero daemon, clone-and-run, and git-friendly if you ever want a subject
 committed.
@@ -179,7 +179,7 @@ CREATE INDEX ... USING hnsw (embedding vector_cosine_ops);
 Standardize on **`voyage-3.5`** (what ask_cooter uses) over SageStack's `voyage-3`.
 Both are 1024-dim so the schema is identical — but **vectors from different models are
 not interchangeable**, so this is a re-embed, not a swap. Do it once, now, while the
-corpus is small, rather than after five subjects exist.
+documents is small, rather than after five subjects exist.
 
 Record `embedModel` + `dim` in every subject manifest and **refuse to search when the
 query embedder doesn't match the subject's** — that mismatch returns plausible-looking
@@ -238,7 +238,7 @@ for a single service manual it is expensive noise.
 
 ### Phase 0 — Rescue the Supabase data ✅ done
 
-The theology corpus cost real money to build (Haiku analysis + Voyage embeddings). It
+The theology documents cost real money to build (Haiku analysis + Voyage embeddings). It
 is currently the *only* copy, in a hosted database this plan is walking away from.
 
 Extend `rebuild-cache-from-supabase.js` — which already paginated `chunks` — into a
@@ -420,7 +420,7 @@ have now. Revisit before the first external client.
 ## 8a. Bugs worth remembering
 
 **Asking for citations the context cannot support makes the model invent them.**
-A theology answer cited eleven page numbers from a corpus where no chunk has a
+A theology answer cited eleven page numbers when no loaded chunk has a
 page and no chunk text mentions one. The instruction to cite `[p.N]` had been
 put in the rules every subject inherits, so the model complied with the format
 regardless — producing citations that looked authoritative, rendered as links,
@@ -432,7 +432,7 @@ it silent.
 1024-dim. Only the recorded model name distinguishes them, and the failure is
 silent.
 
-**Duplicates are invisible until they cost you.** 8% of the theology corpus was
+**Duplicates are invisible until they cost you.** 8% of the theology documents was
 exact duplicates; with `topK: 10` that meant an answer saw 8 distinct passages
 instead of 10, with nothing reporting it.
 
