@@ -94,10 +94,13 @@ export function preferRank(results, { key, active, boost = 0.12, limit = 10 } = 
  * Only what the documents actually contain — selecting something with nothing
  * behind it produces an empty answer and looks like a bug.
  */
-export function availableTerms(chunks, key, { limit = 500 } = {}) {
+export function availableTerms(values, key, { limit = 500 } = {}) {
   const counts = new Map();
-  for (const c of chunks) {
-    for (const t of termsFrom(c, key)) counts.set(t, (counts.get(t) || 0) + 1);
+  for (const v of values) {
+    // Accepts either whole chunks or bare extras values, so a caller can pass
+    // a cheap projection instead of loading every chunk's text.
+    const chunkLike = (v && typeof v === 'object' && 'extras' in v) ? v : { extras: { [key]: v } };
+    for (const t of termsFrom(chunkLike, key)) counts.set(t, (counts.get(t) || 0) + 1);
   }
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))

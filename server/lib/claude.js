@@ -131,7 +131,7 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
   if (!profile) throw new Error('createTeacher requires a subject profile');
 
   let guarded = false;
-  const defaultRetrieve = async (query) => {
+  const defaultRetrieve = async (query, { active = [] } = {}) => {
     if (!store || !embedder) {
       throw new Error('createTeacher requires either `retrieve`, or both `store` and `embedder`');
     }
@@ -146,7 +146,6 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     const { topK, filterKey, overfetch = 3, boost } = profile.retrieval;
 
     // With no preference configured this is an ordinary top-K.
-    const active = filterKey ? await activeTerms() : [];
     if (!filterKey || active.length === 0) {
       return store.searchByVector(profile.slug, vec, topK);
     }
@@ -188,7 +187,11 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
       log,
     });
 
-    const results = await doRetrieve(query);
+    // Resolved once per question and passed to retrieval, rather than read
+    // again there — it is a store round-trip, and both callers want the same
+    // answer for the same question.
+    const active = profile.retrieval.filterKey ? await activeTerms() : [];
+    const results = await doRetrieve(query, { active });
 
     log.log?.(
       `[${profile.slug}] query: "${String(query).slice(0, 80)}"` +
@@ -209,7 +212,6 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     // The active list goes in the VARYING block, not the cached prefix — it
     // changes independently of the subject, and putting it in the prefix would
     // invalidate the cache every time the reader edited their list.
-    const active = profile.retrieval.filterKey ? await activeTerms() : [];
     const activeNote = active.length
       ? `
 

@@ -215,6 +215,31 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       assert.deepEqual(await store.getConceptMap(slug), map);
     });
 
+    test('listExtraValues projects one field without chunk text', async () => {
+      // Exists because building the selectable list from getChunks pulled the
+      // whole subject into memory — 16MB of text for theology — to read one
+      // small field, on every settings request.
+      const withExtras = [
+        { id: 'e1', source: 'a.txt', chunkIndex: 0, text: 'x'.repeat(5000),
+          extras: { drugs: [{ generic: 'metformin', brand: 'Glucophage' }] } },
+        { id: 'e2', source: 'a.txt', chunkIndex: 1, text: 'y'.repeat(5000),
+          extras: { drugs: ['aspirin'] } },
+        { id: 'e3', source: 'a.txt', chunkIndex: 2, text: 'z'.repeat(5000),
+          extras: { other: ['ignored'] } },
+      ];
+      await store.upsertChunks(slug, withExtras);
+
+      const values = await store.listExtraValues(slug, 'drugs');
+      assert.equal(values.length, 2, 'only chunks carrying the field');
+
+      const flat = JSON.stringify(values);
+      assert.ok(flat.includes('metformin') && flat.includes('aspirin'));
+      assert.ok(!flat.includes('xxxxx'), 'chunk text must not come back');
+
+      assert.deepEqual(await store.listExtraValues(slug, 'nosuchfield'), []);
+      await store.deleteChunks(slug, ['e1', 'e2', 'e3']);
+    });
+
     test('settings round-trip and are subject-scoped', async () => {
       // Holds state belonging to a knowledge area rather than a conversation —
       // the Rx subject's "currently taking" list is the first use, and it has
