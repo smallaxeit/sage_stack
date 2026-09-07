@@ -5,7 +5,8 @@ import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { getRuntime } from '../lib/runtime.js';
 import { subjectSourceDir } from '../lib/subjects.js';
-import { ingestDocument } from '../lib/ingest/index.js';
+import { ingestDirectory } from '../lib/ingest/index.js';
+import { requireAdmin } from '../lib/auth.js';
 
 const router = Router();
 
@@ -63,7 +64,7 @@ router.get('/status', async (req, res) => {
 
 let building = null;   // { subject, startedAt, done, total, current, results }
 
-router.post('/build', async (req, res) => {
+router.post('/build', requireAdmin, async (req, res) => {
   if (building) return res.json({ ok: false, message: `Build already running for ${building.subject}` });
 
   let subject, profile, store;
@@ -101,24 +102,28 @@ router.post('/build', async (req, res) => {
     const analysisClient = process.env.ANTHROPIC_API_KEY
       ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
-    for (const file of files) {
-      building.current = file;
-      try {
-        const result = await ingestDocument({
-          profile, store, embedder, analysisClient,
-          filePath: path.join(dir, file),
-          filename: file,
-          onProgress: (p) => { building.stage = p.stage; building.stageDone = p.done; building.stageTotal = p.total; },
-        });
-        building.results.push(result);
-      } catch (err) {
-        building.results.push({ filename: file, error: err.message });
-      }
-      building.done++;
-    }
+    building.results = await ingestDirectory({
+      dir, profile, store, embedder, analysisClient,
+      onDocument: ({ filename, index, result, error }) => {
+        building.current = filename;
+        // Only advance on completion; the start event carries no result.
+        if (result || error) building.done = index + 1;
+      },
+      onProgress: (p) => {
+        building.stage = p.stage;
+        building.stageDone = p.done;
+        building.stageTotal = p.total;
+      },
+    });
+
     building.finishedAt = Date.now();
     setTimeout(() => { building = null; }, 60_000);  // keep the result briefly
-  })().catch(() => { building = null; });
+  })().catch((err) => {
+    // Never leave the flag set — a stuck flag blocks every future build.
+    console.error('[build] failed:', err);
+    building = { ...building, finishedAt: Date.now(), error: err.message };
+    setTimeout(() => { building = null; }, 60_000);
+  });
 });
 
 router.get('/build-progress', (req, res) => {

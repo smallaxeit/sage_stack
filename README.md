@@ -31,7 +31,7 @@ Two areas ship as working examples:
 
 | Subject | What it is | Where its data lives |
 |---|---|---|
-| `theology` | 12 religious and philosophical texts, 4,999 chunks | local Postgres |
+| `theology` | 12 religious and philosophical texts, 4,997 chunks | local Postgres |
 | `softail` | A scanned Harley service manual, 1,063 chunks over 644 pages | connects to an existing ask_cooter database, read-only |
 
 ---
@@ -60,10 +60,17 @@ and citations can link to it. Two page numbers are kept: the position in the
 file, and the label printed on the page. They differ wherever there is front
 matter — by 17 pages in one of the sample texts.
 
-**Scanned PDFs are detected and refused**, rather than silently producing an
-empty knowledge base. Text extraction returns almost nothing for a scan, and
-nothing errors, so the check is explicit. Those need vision ingestion, which is
-not implemented yet — the `softail` corpus was built that way externally.
+**Scanned PDFs take a different route.** Text extraction returns almost
+nothing for a scan and raises no error, so the check is explicit: a document
+with too little text is detected and sent to vision ingestion, which renders
+each page and reads it with a vision model. That is the only thing that works
+on a scan — plain OCR reads body text acceptably while mangling the tables and
+diagrams that are usually the point.
+
+Vision ingestion commits page by page, so an interrupted run resumes rather
+than restarting, and a page that fails is reported rather than sinking the
+batch. It costs about **$0.01 per page**; the pipeline estimates before
+starting and reports actual usage after.
 
 ### Answering
 

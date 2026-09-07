@@ -1,7 +1,7 @@
 # SageStack v2 — Multi-Subject, Local-First Architecture
 
 Branch: `developmentlv`
-Status: **Phases 0–3 and 5 shipped; Phase 4 (vision ingestion) outstanding**
+Status: **All phases shipped.** Ongoing work is tracked in PENDING.md.
 Supersedes: the Supabase-coupled design on `main` (which still runs, untouched)
 
 ---
@@ -260,7 +260,14 @@ query would have searched voyage-3 vectors with a voyage-3.5 embedder,
 returning confident nonsense. The import refused and named the fix.
 
 434 of 5433 chunks (8%) were exact duplicates from repeated builds, silently
-consuming retrieval slots. Removed; 4999 remain, all embedded.
+consuming retrieval slots. Removed; 4999 remained.
+
+Two more went later, found while measuring prompt caching: a single chunk of
+1,238,565 characters — the whole of Plato's Republic as one row, from an older
+pipeline whose paragraph splitting had failed — and another holding most of
+Common Sense. Retrieved, the first put ~310,000 tokens into one request
+(~$0.62) and crowded out the nine real passages beside it. Both were redundant
+with the correctly chunked copies already present. 4997 remain, all embedded.
 
 ### Phase 1 — Store interface + both drivers ✅ done
 
@@ -303,17 +310,29 @@ voyage-3 vectors imported cleanly and re-embedding 5433 chunks would spend real
 money to change vectors that already work. `subjects/theology` therefore pins
 `voyage-3`, and that value is load-bearing.
 
-### Phase 4 — Vision ingestion ⬜ outstanding
+### Phase 4 — Vision ingestion ✅ done
 
-Still the one real unknown: a Node PDF→PNG renderer (`pdf-to-img`,
-`mupdf-js` — unverified). Then ask_cooter's per-page loop: render → extract →
-chunk → embed → store, committed per page, resumable, with retry and model
-fallback.
+The spike resolved: `pdf-to-img` renders on Windows. A 638-page file opens in
+1.2s and pages render at ~0.5s each at scale 2 (~150 DPI).
 
-**Partly obviated.** `softail` connects to the corpus ask_cooter already built
-rather than rebuilding it, so this is only needed to ingest a *new* scan. Text
-ingestion detects a scan and refuses with an explanation instead of silently
-storing nothing.
+- [render.js](server/lib/ingest/render.js) — lazy async iterator; a 650-page
+  manual is 200MB+ of PNG and each page is used once, so nothing is
+  materialized. Passes pdfjs its standard fonts, without which it substitutes
+  and degrades the very text the model has to read.
+- [vision.js](server/lib/ingest/vision.js) — one page to structured JSON, with
+  retry then fallback to the other model tier. A non-retryable failure (bad
+  key, malformed request) fails immediately rather than spending a second call
+  to reach the same error.
+- Committed **page by page**, so an interrupted run resumes rather than
+  restarting. Already-stored pages are derived from chunk ids, not separate
+  bookkeeping.
+
+Measured on real scanned pages: **$0.0105/page**, against a deliberately high
+$0.0156 estimate. A 650-page manual is roughly $7.
+
+Chunking stays *within* a page here, unlike prose ingestion which packs across
+boundaries — a manual page is a self-contained unit, and it keeps the
+page/chunk mapping exact, which is what citations need.
 
 ### Phase 5 — Feed it PDFs ✅ done
 

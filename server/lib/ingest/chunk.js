@@ -48,10 +48,6 @@ export function chunkText(text, { chunkTarget = 1400, chunkMax = 2200 } = {}) {
   return chunks;
 }
 
-/** Rough token estimate — 4 chars per token is close enough for budgeting. */
-export function approxTokens(text) {
-  return Math.max(1, Math.ceil(String(text || '').length / 4));
-}
 
 /**
  * Chunk a paged document, recording where each chunk starts.

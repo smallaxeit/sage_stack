@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { apiFetch } from '../api';
 
 /**
  * What the knowledge base actually contains, and how to add to it.
@@ -71,7 +72,7 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
     body.append('file', file);
 
     try {
-      const res = await fetch(`/api/documents/${subject}/upload`, { method: 'POST', body });
+      const res = await apiFetch(`/api/documents/${subject}/upload`, { method: 'POST', body });
       if (!res.ok && res.headers.get('content-type')?.includes('json')) {
         throw new Error((await res.json()).error || `Upload failed (${res.status})`);
       }

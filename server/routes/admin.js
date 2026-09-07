@@ -3,19 +3,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getRuntime } from '../lib/runtime.js';
 import { friendlySourceName } from '../lib/subjects.js';
 import { rebuildConceptMap } from '../lib/conceptmap.js';
+import { requireAdmin } from '../lib/auth.js';
 
 const router = Router();
 
-// Simple key auth — set ADMIN_KEY in .env
-function auth(req, res, next) {
-  const key = req.headers['x-admin-key'] || req.query.key;
-  if (process.env.ADMIN_KEY && key !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}
-
-router.use(auth);
+router.use(requireAdmin);
 
 async function resolveSubject(req) {
   return req.body?.subject || req.query?.subject || await getRuntime().defaultSubject();
