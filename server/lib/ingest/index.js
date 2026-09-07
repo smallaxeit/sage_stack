@@ -462,15 +462,43 @@ export async function ingestVisionDocument({
   };
 }
 
-/** Ingest every file in a directory. One bad file does not stop the run. */
-export async function ingestDirectory({ dir, ...rest }) {
-  const files = await fs.readdir(dir);
+/**
+ * Ingest every file in a directory. One bad file does not stop the run.
+ *
+ * `onDocument({ filename, index, total, result?, error? })` fires as each file
+ * finishes, and `onProgress` is forwarded per document, so a caller can report
+ * both which file is running and how far through it is.
+ *
+ * Dotfiles are skipped: a source directory is kept in git with a .gitkeep, and
+ * trying to parse that produces a confusing failure for something that is not
+ * a document at all.
+ */
+export async function ingestDirectory({ dir, onDocument = () => {}, onProgress = () => {}, ...rest }) {
+  const entries = await fs.readdir(dir);
+  const files = [];
+  for (const name of entries) {
+    if (name.startsWith('.')) continue;
+    const full = path.join(dir, name);
+    if ((await fs.stat(full)).isFile()) files.push({ name, full });
+  }
+
   const results = [];
-  for (const file of files) {
-    const full = path.join(dir, file);
-    if (!(await fs.stat(full)).isFile()) continue;
-    try { results.push(await ingestDocument({ ...rest, filePath: full, filename: file })); }
-    catch (err) { results.push({ filename: file, error: err.message }); }
+  for (const [index, { name, full }] of files.entries()) {
+    onDocument({ filename: name, index, total: files.length });
+    try {
+      const result = await ingestDocument({
+        ...rest,
+        filePath: full,
+        filename: name,
+        onProgress: (p) => onProgress({ ...p, filename: name, index, total: files.length }),
+      });
+      results.push(result);
+      onDocument({ filename: name, index, total: files.length, result });
+    } catch (err) {
+      const failed = { filename: name, error: err.message };
+      results.push(failed);
+      onDocument({ filename: name, index, total: files.length, error: err.message });
+    }
   }
   return results;
 }

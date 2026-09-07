@@ -18,7 +18,7 @@ What each key unlocks:
 | `VOYAGE_API_KEY` (or `EMBED_DRIVER=local`) | documents ingest but **nothing is searchable** |
 | `ANTHROPIC_API_KEY` | no chat, and ingestion stores no concepts or summaries |
 | `DATABASE_URL` | only needed for `KB_STORE=postgres` |
-| `ADMIN_KEY` | unset means admin and upload routes are open — fine locally |
+| `ADMIN_KEY` | unset means upload, build and delete are unauthenticated — fine locally |
 
 ---
 
@@ -53,6 +53,24 @@ starts without it even if other databases on the same instance have it.
 
 ---
 
+## Locking it down
+
+`ADMIN_KEY` gates everything that spends money, writes, or deletes: upload,
+build, embedding backfill, concept map rebuild, document delete. Reading stays
+open — a knowledge base exists to be read.
+
+```
+ADMIN_KEY=some-long-random-string
+```
+
+Unset, the gate is open and the server says so at boot. That is right for a
+local single-operator run and wrong for anything reachable from elsewhere.
+
+In the UI the key is entered once in the Admin panel (⚙) and kept in
+localStorage; every screen that mutates sends it from there.
+
+---
+
 ## Run
 
 ```bash
@@ -68,7 +86,7 @@ At boot the server prints each subject's state:
 ```
 Store: postgres
   ok   softail      1063 chunks, 1063 embedded (voyage-3.5, 1024d)
-  ok   theology     4999 chunks, 4999 embedded (voyage-3, 1024d)
+  ok   theology     4997 chunks, 4997 embedded (voyage-3, 1024d)
 ```
 
 `--` means not ready. The reason is on the line.
@@ -85,9 +103,32 @@ streams per stage.
 
 Supported: PDF, TXT, MD, JSON, CSV.
 
-A scanned PDF will be **refused** with a message saying so. Text extraction
-returns almost nothing for a scan and raises no error, so the check is
-explicit — otherwise you would get an empty knowledge base reported as success.
+**A scanned PDF needs vision ingestion.** Text extraction returns almost
+nothing for a scan and raises no error, so the check is explicit: too little
+text and ingestion stops and says so, rather than reporting an empty knowledge
+base as success.
+
+To ingest one, set the subject's `ingest.mode` to `"vision"`. Each page is
+rendered and read by a vision model — the only thing that works on a scan, since
+plain OCR mangles exactly the tables and diagrams that matter.
+
+```jsonc
+"ingest": { "mode": "vision", "renderScale": 2, "visionModel": null }
+```
+
+`renderScale` trades image size against legibility: 2 (~150 DPI) is enough for
+body text and table rules; a dense wiring diagram may want 3, at roughly double
+the cost. `visionModel` overrides the default.
+
+It costs about **$0.01 per page** — call it $7 for a 650-page manual. The run
+estimates before starting and reports actual usage after.
+
+Pages are committed one at a time, so an interrupted run **resumes** rather than
+restarting: re-run the same command and pages already stored are skipped. Pages
+that fail are collected and reported instead of sinking the batch.
+
+Vision ingestion requires `ANTHROPIC_API_KEY`. There is no offline path for a
+scan — the page has to be looked at.
 
 ---
 

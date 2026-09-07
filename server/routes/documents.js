@@ -20,6 +20,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { getRuntime } from '../lib/runtime.js';
 import { resolveStoreConfig } from '../lib/subjects.js';
+import { requireAdmin } from '../lib/auth.js';
 import { ingestDocument, documentsDir, safeFilename } from '../lib/ingest/index.js';
 
 const router = Router();
@@ -36,14 +37,6 @@ const CONTENT_TYPES = {
   '.json': 'application/json',
   '.csv': 'text/csv',
 };
-
-function adminAuth(req, res, next) {
-  const key = req.headers['x-admin-key'] || req.query.key;
-  if (process.env.ADMIN_KEY && key !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}
 
 /** Resolve a file inside the subject's document directory, or null. */
 async function resolveDoc(slug, filename) {
@@ -163,7 +156,7 @@ router.get('/:subject/chunks/:filename', async (req, res) => {
 // ─── Upload + ingest ──────────────────────────────────────────────────────────
 // Progress is streamed as SSE, because a large PDF takes long enough that a
 // silent spinner is indistinguishable from a hang.
-router.post('/:subject/upload', adminAuth, upload.single('file'), async (req, res) => {
+router.post('/:subject/upload', requireAdmin, upload.single('file'), async (req, res) => {
   const { subject } = req.params;
   if (!req.file) return res.status(400).json({ error: 'No file uploaded (field name must be "file")' });
 
@@ -215,7 +208,7 @@ router.post('/:subject/upload', adminAuth, upload.single('file'), async (req, re
 });
 
 // ─── Remove a document and its chunks ─────────────────────────────────────────
-router.delete('/:subject/:filename', adminAuth, async (req, res) => {
+router.delete('/:subject/:filename', requireAdmin, async (req, res) => {
   try {
     const rt = getRuntime();
     const { subject } = req.params;

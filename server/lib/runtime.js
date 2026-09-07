@@ -138,5 +138,3 @@ export function getRuntime() {
   return _runtime;
 }
 
-/** Testing seam — drops the cached runtime. */
-export function resetRuntime() { _runtime = null; }

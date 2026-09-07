@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getAdminKey, setAdminKey as persistAdminKey, adminHeaders } from '../api';
 
 /**
  * Admin panel — a slide-out control surface, scoped to the active subject.
@@ -43,7 +44,7 @@ function Bar({ pct }) {
 
 export default function AdminPanel({ open, onClose, subject, current, docs = [], onRefresh }) {
   const [tab, setTab] = useState('status');
-  const [adminKey, setAdminKey] = useState(() => localStorage.getItem('ss-admin-key') || '');
+  const [adminKey, setAdminKey] = useState(getAdminKey);
   const [needKey, setNeedKey] = useState(false);
   const [msg, setMsg] = useState(null);          // { text, kind }
   const [build, setBuild] = useState(null);
@@ -57,7 +58,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
       ...opts,
       headers: {
         'Content-Type': 'application/json',
-        ...(adminKey ? { 'x-admin-key': adminKey } : {}),
+        ...adminHeaders(),
         ...(opts.headers || {}),
       },
     });
@@ -74,7 +75,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
         const [b, c] = await Promise.all([
           fetch('/api/build-progress').then(r => r.json()).catch(() => null),
           fetch('/api/admin/concept-map-progress', {
-            headers: adminKey ? { 'x-admin-key': adminKey } : {},
+            headers: adminHeaders(),
           }).then(r => r.json()).catch(() => null),
         ]);
         if (!alive) return;
@@ -150,7 +151,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
                     if (e.key !== 'Enter') return;
                     const v = e.target.value.trim();
                     if (!v) return;
-                    localStorage.setItem('ss-admin-key', v);
+                    persistAdminKey(v);
                     setAdminKey(v);
                     setNeedKey(false);
                     setMsg({ text: 'Key saved — retry the action', kind: 'info' });

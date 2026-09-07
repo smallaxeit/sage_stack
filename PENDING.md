@@ -22,12 +22,11 @@ Approved for a future session. Nothing here is in progress.
 
 ## Ingestion
 
-- **Vision ingestion is not implemented.** Scanned PDFs are correctly detected
-  and refused, but there is no path to ingest one. Needs a Node PDF→PNG
-  renderer (unverified — `pdf-to-img` and `mupdf-js` are the candidates) plus
-  per-page Claude vision extraction, resumable per page with retry and model
-  fallback. `softail` is configured `"mode": "vision"` and was built externally
-  by ask_cooter; nothing here can reproduce it yet.
+- **Vision ingestion has never been run end to end.** Extraction is verified
+  on individual pages and the resume logic in isolation, but no full
+  multi-hundred-page document has been ingested. The retry and fallback paths
+  are unit-tested against doubles, not against real rate limits. Run one
+  before depending on it.
 
 - **`ingest.mode: "auto"` is never exercised.** Detection exists
   (`detectIngestMode`) and both committed subjects pin `text` or `vision`.
