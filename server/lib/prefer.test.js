@@ -7,7 +7,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { termsFrom, matches, preferRank, availableTerms } from './prefer.js';
+import { termsFrom, matches, preferRank, coverActive, availableTerms } from './prefer.js';
 
 const chunk = (drugs, score = 0.5, id = 'c') => ({ id, score, text: 't', extras: { drugs } });
 
@@ -110,6 +110,95 @@ describe('preferRank', () => {
     const results = [chunk(['a'], 0.5, 'first'), chunk(['b'], 0.5, 'second')];
     const out = preferRank(results, { key: 'drugs', active, limit: 2 });
     assert.deepEqual(out.map(r => r.id), ['first', 'second']);
+  });
+});
+
+describe('coverActive', () => {
+  const active = ['rosuvastatin', 'losartan', 'amlodipine', 'spironolactone'];
+
+  test('gives a listed item its passage when ranking gave it none', () => {
+    // The real failure: two rosuvastatin inserts were half the documents, took
+    // every ranked slot, and the answer reported amlodipine as not covered —
+    // while 24 embedded, tagged amlodipine passages sat in the store.
+    const pool = [
+      chunk(['rosuvastatin'], 0.71, 'r1'),
+      chunk(['rosuvastatin'], 0.70, 'r2'),
+      chunk(['losartan'], 0.64, 'l1'),
+      chunk(['spironolactone'], 0.61, 's1'),
+      chunk(['amlodipine'], 0.44, 'a1'),
+      chunk(['amlodipine'], 0.41, 'a2'),
+    ];
+    const ranked = pool.slice(0, 4);
+
+    const { results, uncovered } = coverActive(ranked, pool, { key: 'drugs', active });
+
+    assert.deepEqual(uncovered, [], 'the pool had amlodipine, so nothing is uncovered');
+    assert.ok(results.some(r => r.id === 'a1'), 'its best passage is pulled in');
+    assert.equal(results.find(r => r.id === 'a1').coveredFor, 'amlodipine');
+    // Ranking is not disturbed; coverage is appended.
+    assert.deepEqual(results.slice(0, 4).map(r => r.id), ['r1', 'r2', 'l1', 's1']);
+  });
+
+  test('takes the best-scoring passage for the item, not just any', () => {
+    const pool = [
+      chunk(['rosuvastatin'], 0.71, 'r1'),
+      chunk(['amlodipine'], 0.44, 'best'),
+      chunk(['amlodipine'], 0.20, 'worse'),
+    ];
+    const { results } = coverActive([pool[0]], pool, {
+      key: 'drugs', active: ['rosuvastatin', 'amlodipine'],
+    });
+    assert.ok(results.some(r => r.id === 'best'));
+    assert.ok(!results.some(r => r.id === 'worse'));
+  });
+
+  test('reports what the pool cannot cover rather than inventing it', () => {
+    // A question worded for one drug embeds nowhere near another's pages, so
+    // the pool can legitimately hold nothing for it. Saying so lets the caller
+    // search again; silence here is what produced a false "not covered".
+    const pool = [chunk(['rosuvastatin'], 0.71, 'r1')];
+    const { results, uncovered } = coverActive(pool, pool, { key: 'drugs', active });
+    assert.deepEqual(uncovered, ['losartan', 'amlodipine', 'spironolactone']);
+    assert.equal(results.length, 1);
+  });
+
+  test('coverPerTerm controls the floor', () => {
+    const pool = [
+      chunk(['rosuvastatin'], 0.71, 'r1'),
+      chunk(['amlodipine'], 0.44, 'a1'),
+      chunk(['amlodipine'], 0.41, 'a2'),
+      chunk(['amlodipine'], 0.39, 'a3'),
+    ];
+    const { results } = coverActive([pool[0]], pool, {
+      key: 'drugs', active: ['amlodipine'], limit: 2,
+    });
+    assert.deepEqual(results.filter(r => r.coveredFor).map(r => r.id), ['a1', 'a2']);
+  });
+
+  test('adds nothing when ranking already covered everything', () => {
+    const pool = [chunk(['rosuvastatin'], 0.71, 'r1'), chunk(['amlodipine'], 0.44, 'a1')];
+    const { results, uncovered } = coverActive(pool, pool, {
+      key: 'drugs', active: ['rosuvastatin', 'amlodipine'],
+    });
+    assert.equal(results.length, 2);
+    assert.deepEqual(uncovered, []);
+  });
+
+  test('never duplicates a passage already selected', () => {
+    // One passage can name several of the listed drugs — an interaction table
+    // routinely does — and must not be added once per drug.
+    const both = chunk([{ generic: 'amlodipine' }, { generic: 'losartan' }], 0.5, 'both');
+    const pool = [chunk(['rosuvastatin'], 0.71, 'r1'), both];
+    const { results } = coverActive([pool[0]], pool, {
+      key: 'drugs', active: ['amlodipine', 'losartan'],
+    });
+    assert.equal(results.filter(r => r.id === 'both').length, 1);
+  });
+
+  test('a subject with no preference list is untouched', () => {
+    const ranked = [chunk(['aspirin'], 0.5, 'a')];
+    assert.deepEqual(coverActive(ranked, ranked, { key: 'drugs', active: [] }).results, ranked);
+    assert.deepEqual(coverActive(ranked, ranked, {}).results, ranked);
   });
 });
 

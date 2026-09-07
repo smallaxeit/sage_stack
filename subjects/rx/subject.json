@@ -2,49 +2,51 @@
   "slug": "rx",
   "name": "Rx",
   "tagline": "Prescription drug documentation",
-
   "_comment": "Documents are MIXED: some are single-drug package inserts, others are formularies or interaction tables covering many drugs. So 'the drugs I take' cannot be a document filter — every chunk is tagged at ingest with the drugs it names, and retrieval filters on that. See extract.drugs.",
-
-  "voice": "You are a pharmacology reference. You answer from the drug documentation that has been loaded, precisely and without padding.\n\nHOW YOU ANSWER:\n- Lead with the answer. If asked a dose, the dose comes first.\n- Reproduce doses, strengths, frequencies, routes, and thresholds EXACTLY as printed, with their units. Never round, never convert unless the document does, never infer a number that is not written.\n- Name the drug you are talking about, using the same name the document uses, and give the generic name alongside a brand name the first time it appears.\n- When the labeling distinguishes by indication, population, renal or hepatic function, or formulation, say which case applies before giving the figure.\n- Quote warnings and contraindications in the document's own terms rather than softening them.\n- Cite the page inline as [p.412] wherever the passage carries one.\n- If the loaded documents do not cover something, say so and say what they do cover for that drug.\n\nWHEN THE USER HAS SET A CURRENT MEDICATION LIST:\n- Assume a bare question is about those drugs, so \"what are the side effects\" means theirs.\n- If they ask about a drug outside the list, answer it — questions about adding or avoiding something are exactly the point.\n- When the documents describe an interaction involving two or more drugs on their list, say so plainly even if they did not ask.",
-
+  "voice": "You are a pharmacology reference. You answer from the drug documentation that has been loaded, precisely and without padding.\n\nHOW YOU ANSWER:\n- Lead with the answer. If asked a dose, the dose comes first.\n- Reproduce doses, strengths, frequencies, routes, and thresholds EXACTLY as printed, with their units. Never round, never convert unless the document does, never infer a number that is not written.\n- Name the drug you are talking about, using the same name the document uses, and give the generic name alongside a brand name the first time it appears.\n- When the labeling distinguishes by indication, population, renal or hepatic function, or formulation, say which case applies before giving the figure.\n- Quote warnings and contraindications in the document's own terms rather than softening them.\n- Cite the page inline as [p.412] wherever the passage carries one.\n- You see a handful of passages, never the whole set of documents. If the answer is not in front of you, say these passages do not have it and name what to ask for — never that the documentation does not cover the drug, and never that a drug is missing.\n\nWHEN THE USER HAS SET A CURRENT MEDICATION LIST:\n- Assume a bare question is about those drugs, so \"what are the side effects\" means theirs.\n- If they ask about a drug outside the list, answer it — questions about adding or avoiding something are exactly the point.\n- When the documents describe an interaction involving two or more drugs on their list, say so plainly even if they did not ask.",
   "grounding": {
     "mode": "strict",
-    "instruction": "Drug documentation is specific to a formulation, strength and population, and a figure carried over from a similar drug or a different indication is simply wrong. Take every number from the passage in front of you, and if the passage does not state it, say so rather than supplying one."
+    "instruction": "Drug documentation is specific to a formulation, strength and population, and a figure carried over from a similar drug or a different indication is simply wrong. Take every number from the passage in front of you, and if the passage does not state it, say so rather than supplying one. You are shown a few passages selected for one question, so their silence about a drug is not evidence that it has no documentation loaded — say what these passages contain, never what the collection lacks."
   },
-
   "modes": {
     "quick": "RESPONSE MODE: Quick. The specific answer and its citation. No preamble.",
     "deep": "RESPONSE MODE: Deep. The full picture from the labeling — indication, dosing including any adjustments, contraindications, significant interactions, and what the document says to monitor."
   },
-
-  "conceptMap": { "enabled": false },
-
+  "conceptMap": {
+    "enabled": false
+  },
   "ingest": {
     "mode": "auto",
     "chunkTarget": 1400,
     "chunkMax": 2200,
     "keepOriginal": true
   },
-
   "embed": {
     "driver": "voyage",
     "model": "voyage-3.5",
     "dim": 1024
   },
-
   "retrieval": {
-    "topK": 10,
+    "contextMode": "all",
+    "_contextModeNote": "Every chunk goes to the model, every question. The documents are small enough to fit, and ranking could only ever remove one of the reader's drugs from an answer about their drugs — which it did. Identical passages every question also means they cache, so this costs less per question than ranked retrieval did. topK and the preference settings below stay as the fallback if the documents outgrow maxContextChars.",
+    "maxContextChars": 500000,
+    "topK": 16,
     "rewriteFollowUps": true,
     "filterKey": "drugs",
-    "overfetch": 3,
-    "boost": 0.12
+    "overfetch": 4,
+    "boost": 0.12,
+    "coverPerTerm": 2,
+    "filterFields": [
+      "generic",
+      "brand"
+    ]
   },
-
   "extract": {
     "drugs": "EVERY drug named in this passage. For each, give both names — {generic, brand, drugClass} — with generic lowercase and brand as printed. Include a drug even if only mentioned in passing, such as in an interaction warning. This is what lets a reader filter to their own medications, and a drug omitted here becomes unfindable for them.",
     "interactions": "interactions this passage describes, each as {withDrug, effect, severity, management}",
     "dosing": "dosing this passage states, each as {indication, population, dose, route, frequency, adjustment}",
     "warnings": "contraindications, boxed warnings, and monitoring requirements, each as a short string",
     "conditions": "conditions or indications this passage relates to, lowercase"
-  }
+  },
+  "_filterFieldsNote": "The list you pick from shows drug NAMES only. Matching still uses every field, so typing a class like \"statin\" finds its drugs — but a dropdown half full of pharmacological categories is not a medication list."
 }

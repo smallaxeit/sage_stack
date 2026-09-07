@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, friendlySourceName } from './subjects.js';
 import { assertEmbedderMatchesSubject } from './embed/index.js';
 import { resolveSearchQuery } from './rewrite.js';
-import { preferRank } from './prefer.js';
+import { preferRank, coverActive, matches } from './prefer.js';
 
 let _client = null;
 function defaultClient() {
@@ -135,6 +135,40 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     if (!store || !embedder) {
       throw new Error('createTeacher requires either `retrieve`, or both `store` and `embedder`');
     }
+    /**
+     * Small subject, whole thing in context.
+     *
+     * Ranking exists to choose what will not fit. When everything fits, every
+     * heuristic that chooses is pure downside: a question spanning four drugs
+     * had one of them ranked out entirely and the answer called it undocumented.
+     *
+     * It is also CHEAPER than it looks. The passages are identical for every
+     * question, which makes them a stable prefix, which makes them cacheable —
+     * so this reads from cache at a tenth of the input price instead of paying
+     * full freight for a different ten passages each time.
+     *
+     * Only sound while the documents fit. Past the budget it falls back to
+     * search rather than truncating, because silently dropping the tail is
+     * exactly the failure this mode exists to prevent.
+     */
+    if (profile.retrieval.contextMode === 'all') {
+      const all = await store.getChunks(profile.slug, { limit: null });
+      const chars = all.reduce((n, c) => n + (c.text?.length ?? 0), 0);
+      const budget = profile.retrieval.maxContextChars ?? 500_000;
+      if (chars <= budget) {
+        // Tells prepare() these passages can go in the cached block. Set here
+        // rather than inferred there, because the fallback below leaves the
+        // mode on while the passages are no longer stable.
+        all.stablePassages = true;
+        return all;
+      }
+      log.warn?.(
+        `[${profile.slug}] contextMode "all" wants ${chars} chars, over the ` +
+        `${budget} budget — falling back to search. Raise retrieval.maxContextChars ` +
+        `or split the subject.`,
+      );
+    }
+
     if (!guarded) {
       // Refuse a cross-model query rather than returning ranked nonsense.
       const meta = await store.getSubjectMeta(profile.slug);
@@ -143,7 +177,7 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
       guarded = true;
     }
     const vec = await embedder.embedQuery(query);
-    const { topK, filterKey, overfetch = 3, boost } = profile.retrieval;
+    const { topK, filterKey, overfetch = 3, boost, coverPerTerm = 1 } = profile.retrieval;
 
     // With no preference configured this is an ordinary top-K.
     if (!filterKey || active.length === 0) {
@@ -154,7 +188,33 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     // can still be pulled in. Re-ranking a list that was already truncated
     // could not recover it.
     const wide = await store.searchByVector(profile.slug, vec, topK * overfetch);
-    return preferRank(wide, { key: filterKey, active, boost, limit: topK });
+    const ranked = preferRank(wide, { key: filterKey, active, boost, limit: topK });
+
+    // Then guarantee each listed item a passage, so an item with many pages
+    // cannot take every slot and leave another looking undocumented.
+    const { results, uncovered } = coverActive(ranked, wide, {
+      key: filterKey, active, limit: coverPerTerm,
+    });
+
+    // Anything absent from the whole pool gets its own search. The pool is
+    // ranked against the question alone, and a question worded for one drug
+    // embeds nowhere near another's pages — which says nothing about whether
+    // those pages exist. One extra embedding per missing item, only when one
+    // is actually missing.
+    for (const term of uncovered) {
+      try {
+        const termVec = await embedder.embedQuery(`${term} — ${query}`);
+        const hits = await store.searchByVector(profile.slug, termVec, topK);
+        const hit = hits.find(h => matches(h, filterKey, [term]) && !results.some(r => r.id === h.id));
+        if (hit) results.push({ ...hit, preferred: true, coveredFor: term });
+      } catch (err) {
+        // Coverage is an improvement on the answer, never a precondition for
+        // getting one.
+        log.warn?.(`[${profile.slug}] coverage search for "${term}" failed: ${err.message}`);
+      }
+    }
+
+    return results;
   };
 
   /**
@@ -181,10 +241,16 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     // embedded with no subject at all. Rewriting restores the missing context
     // before the vector search, and falls back to the raw question on any
     // failure — retrieval must never depend on it.
+    // Rewriting exists to aim a vector search. With contextMode "all" there is
+    // no search to aim, so it would be a model call and a round-trip of latency
+    // bought for nothing.
+    const rewriteClient =
+      profile.retrieval.rewriteFollowUps === false || profile.retrieval.contextMode === 'all'
+        ? null
+        : (client || defaultClient());
+
     const { query, rewritten, original } = await resolveSearchQuery({
-      messages,
-      client: profile.retrieval.rewriteFollowUps === false ? null : (client || defaultClient()),
-      log,
+      messages, client: rewriteClient, log,
     });
 
     // Resolved once per question and passed to retrieval, rather than read
@@ -237,10 +303,19 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
      * Caching is a PREFIX match, so anything that varies must stay in the
      * second block. Nothing time- or request-dependent may be added above it.
      */
-    const systemBlocks = [
-      { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: activeNote + ctx.contextStr },
-    ];
+    // When the passages are the whole subject they do not vary either, so they
+    // belong INSIDE the cached prefix — that is where the saving comes from.
+    // The reader's list still varies and stays behind it.
+    const systemBlocks = (results.stablePassages
+      ? [
+          { type: 'text', text: stable + ctx.contextStr, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: activeNote },
+        ]
+      : [
+          { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: activeNote + ctx.contextStr },
+        ]
+    ).filter(b => b.text);   // an empty text block is an API error
 
     return { ...ctx, systemBlocks, activeTerms: active, systemPrompt: stable + activeNote + ctx.contextStr };
   }
@@ -257,6 +332,10 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
 
   return {
     profile,
+
+    // Exposed so what will be sent can be inspected — passage coverage, block
+    // split, cache markers — without paying for a completion to see it.
+    prepare,
 
     async chat(messages, { mode = 'deep' } = {}) {
       const { systemBlocks, sources, chips, analytics } = await prepare(messages, mode);

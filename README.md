@@ -83,6 +83,24 @@ page — **but only when the retrieved passages actually have page numbers**.
 Asking for citations that can't exist makes a model invent them, so the
 instruction is chosen per request from what was actually retrieved.
 
+**Ranking is a compromise, and a small subject need not make it.** Set
+`retrieval.contextMode: "all"` and every chunk goes to the model on every
+question. Ranking exists to choose what will not fit; when it all fits, choosing
+is pure downside. It is also cheaper than it looks — identical passages every
+question form a stable prefix, so they are cached and read back at a tenth of
+the input price. Past `maxContextChars` the subject falls back to search rather
+than truncating, because silently dropping the tail is the failure this avoids.
+
+**Where ranking is still used, a preference list gets a floor.** A subject can
+nominate things the reader currently cares about — for Rx, the drugs they are
+taking — via `retrieval.filterKey`. Matching passages are boosted, never
+required, so "is it safe to add ibuprofen?" still works. But a boost alone let
+the drug with the most pages take every slot: four drugs on the list, and the
+two rosuvastatin inserts crowded out all 24 amlodipine passages, so the answer
+called amlodipine undocumented. So each listed item is also guaranteed its
+best-scoring passage, and anything missing from the pool entirely gets its own
+search.
+
 ---
 
 ## Stack
@@ -135,7 +153,15 @@ pooler does not support the prepared statements the driver relies on.
 
 A subject can also carry its **own** `store` block, so different knowledge
 areas can live in different databases — one in the app's own, another in a
-database built by something else. See `subjects/softail/subject.json`.
+database built by something else. That is also the cleanest answer for
+multi-tenancy: a tenant can own its whole database rather than a schema in
+a shared one. See `RUNNING.md`.
+
+Reading a database in place is the exception, not the default. It leaves one
+subject on its own code path and tied to another project's disk layout, so it
+suits a database you genuinely cannot copy. Where you can copy, copy —
+`server/scripts/import-askcooter.js` does it for ask_cooter, embeddings and
+page scans included, without modifying the source.
 
 ---
 
@@ -253,7 +279,7 @@ Knowledge screen.
 
 ```
 subjects/<slug>/subject.json     what a knowledge area is
-data/                            local stores, uploads, exports (gitignored)
+data/                            local stores, uploads, page scans (gitignored)
 
 server/
   index.js                       express app; reports subject status at boot
@@ -269,7 +295,8 @@ server/
     ingest/                      parse → chunk → analyze → embed → store,
                                  plus render + vision for scans
   routes/                        chat | admin | documents
-  scripts/                       bootstrap-postgres, export/import
+  scripts/                       bootstrap-postgres, export/import,
+                                 import-askcooter
 
 client/src/
   App.jsx                        shell, sidebar, subject and conversation switching
