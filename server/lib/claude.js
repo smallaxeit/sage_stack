@@ -20,6 +20,7 @@ import { buildSystemPrompt, friendlySourceName } from './subjects.js';
 import { assertEmbedderMatchesSubject } from './embed/index.js';
 import { resolveSearchQuery } from './rewrite.js';
 import { preferRank, coverActive, matches } from './prefer.js';
+import { priceMessage, totalCost, formatUSD } from './pricing.js';
 
 let _client = null;
 function defaultClient() {
@@ -150,11 +151,21 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
      * Only sound while the documents fit. Past the budget it falls back to
      * search rather than truncating, because silently dropping the tail is
      * exactly the failure this mode exists to prevent.
+     *
+     * The budget is in CHARACTERS because that is what can be measured without
+     * a tokenizer, but the conversion is not the ~4 chars/token of ordinary
+     * prose: measured on drug labeling it is 2.5, so 250k chars is already
+     * ~100k tokens. Dense, number-heavy documents tokenize badly.
+     *
+     * Latency is the other limit, and it is reached first. Rx at 121 chunks
+     * fits the window comfortably and still took 169 seconds to start
+     * answering, against 23 seconds for a ranked 30. Fitting is not the same
+     * as being worth sending.
      */
     if (profile.retrieval.contextMode === 'all') {
       const all = await store.getChunks(profile.slug, { limit: null });
       const chars = all.reduce((n, c) => n + (c.text?.length ?? 0), 0);
-      const budget = profile.retrieval.maxContextChars ?? 500_000;
+      const budget = profile.retrieval.maxContextChars ?? 250_000;
       if (chars <= budget) {
         // Tells prepare() these passages can go in the cached block. Set here
         // rather than inferred there, because the fallback below leaves the
@@ -249,9 +260,10 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
         ? null
         : (client || defaultClient());
 
-    const { query, rewritten, original } = await resolveSearchQuery({
-      messages, client: rewriteClient, log,
-    });
+    const {
+      query, rewritten, original,
+      usage: rewriteUsage, model: rewriteModel,
+    } = await resolveSearchQuery({ messages, client: rewriteClient, log });
 
     // Resolved once per question and passed to retrieval, rather than read
     // again there — it is a store round-trip, and both callers want the same
@@ -317,7 +329,42 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
         ]
     ).filter(b => b.text);   // an empty text block is an API error
 
-    return { ...ctx, systemBlocks, activeTerms: active, systemPrompt: stable + activeNote + ctx.contextStr };
+    // Billed before the answer even starts. Carried forward so the cost the
+    // reader sees is the cost of the question, not just of the completion.
+    const priorCosts = rewriteUsage ? [priceMessage(rewriteModel, rewriteUsage)] : [];
+
+    return {
+      ...ctx, systemBlocks, activeTerms: active, priorCosts,
+      systemPrompt: stable + activeNote + ctx.contextStr,
+    };
+  }
+
+  /**
+   * What this question cost: the answer, plus anything billed on the way to it.
+   *
+   * Shown to the reader because the number is not intuitive — the same question
+   * against the same subject varies by 10x on whether the cached prefix was
+   * still warm, and nothing else in the answer reveals that.
+   *
+   * The query embedding is left out: at Voyage rates a question embeds for
+   * about a millionth of a dollar, and the embedder reports no token count, so
+   * including it would mean inventing a number to add nothing.
+   */
+  function questionCost(priorCosts = [], usage) {
+    const answer = priceMessage(profile.chat.model, usage);
+    const total = totalCost([...priorCosts, answer]);
+    if (!total.calls.length) return null;   // no price on file; say nothing
+
+    return {
+      usd: total.usd,
+      display: formatUSD(total.usd),
+      complete: total.complete,
+      cacheHit: answer?.cacheHit ?? false,
+      model: profile.chat.model,
+      tokens: answer?.tokens ?? null,
+      // A second call means a rewrite happened, which is worth being able to see.
+      calls: total.calls.length,
+    };
   }
 
   /** Report cache effectiveness — zero reads across repeats means a silent invalidator. */
@@ -338,7 +385,7 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
     prepare,
 
     async chat(messages, { mode = 'deep' } = {}) {
-      const { systemBlocks, sources, chips, analytics } = await prepare(messages, mode);
+      const { systemBlocks, sources, chips, analytics, priorCosts } = await prepare(messages, mode);
       const response = await (client || defaultClient()).messages.create({
         model: profile.chat.model,
         max_tokens: profile.chat.maxTokens,
@@ -351,6 +398,7 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
         text, sources, chips, analytics,
         outputTokens: response.usage?.output_tokens ?? 0,
         usage: response.usage,
+        cost: questionCost(priorCosts, response.usage),
       };
     },
 
@@ -362,7 +410,7 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
      */
     async chatStream(messages, onChunk, { mode = 'deep', onStage = () => {} } = {}) {
       onStage('retrieving');
-      const { systemBlocks, sources, chips, analytics } = await prepare(messages, mode);
+      const { systemBlocks, sources, chips, analytics, priorCosts } = await prepare(messages, mode);
       onStage('thinking');
       const stream = await (client || defaultClient()).messages.stream({
         model: profile.chat.model,
@@ -380,7 +428,11 @@ THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
       }
       const final = await stream.finalMessage();
       logCache(final?.usage);
-      return { text, sources, chips, analytics, outputTokens: final?.usage?.output_tokens ?? 0 };
+      return {
+        text, sources, chips, analytics,
+        outputTokens: final?.usage?.output_tokens ?? 0,
+        cost: questionCost(priorCosts, final?.usage),
+      };
     },
   };
 }

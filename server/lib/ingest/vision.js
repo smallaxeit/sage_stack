@@ -18,8 +18,11 @@
  * run resumes instead of restarting, and one bad page never sinks the batch.
  */
 
-const DEFAULT_MODEL   = 'claude-sonnet-5';
-const FALLBACK_MODEL  = 'claude-opus-5';
+import { purposeConfig, modelConfig } from '../models.js';
+import { priceMessage } from '../pricing.js';
+
+const { model: DEFAULT_MODEL, fallback: FALLBACK_MODEL } = purposeConfig('vision');
+const VISION_ESTIMATE = modelConfig().visionEstimate;
 
 /** Substrings marking a failure worth retrying rather than surfacing. */
 const RETRYABLE = [
@@ -172,13 +175,18 @@ export async function extractPage({
  * 1,500 tokens; output varies with how dense the page is. Deliberately an
  * over-estimate — the useful error here is being pleasantly surprised.
  */
-export function estimateVisionCost(pages, { inPerPage = 1800, outPerPage = 1200, model = DEFAULT_MODEL } = {}) {
-  const rates = {
-    'claude-sonnet-5':  { in: 2,  out: 10 },
-    'claude-opus-5':    { in: 5,  out: 25 },
-    'claude-haiku-4-5': { in: 1,  out: 5 },
-  }[model] ?? { in: 2, out: 10 };
-
-  const usd = (pages * inPerPage / 1e6) * rates.in + (pages * outPerPage / 1e6) * rates.out;
-  return { pages, model, usd, perPage: usd / Math.max(1, pages) };
+export function estimateVisionCost(pages, {
+  inPerPage = VISION_ESTIMATE.inputTokensPerPage,
+  outPerPage = VISION_ESTIMATE.outputTokensPerPage,
+  model = DEFAULT_MODEL,
+} = {}) {
+  // Priced by the same table the chat path uses. This function used to carry
+  // its own, which quoted Sonnet at $2/$10 against the real $3/$15 — every
+  // vision estimate was a third low.
+  const priced = priceMessage(model, {
+    input_tokens: pages * inPerPage,
+    output_tokens: pages * outPerPage,
+  });
+  const usd = priced?.usd ?? 0;
+  return { pages, model, usd, perPage: usd / Math.max(1, pages), priced: !!priced };
 }

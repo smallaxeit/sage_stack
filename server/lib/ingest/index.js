@@ -29,6 +29,7 @@ import { renderExtractSchema } from '../subjects.js';
 import { renderPages, pageCount } from './render.js';
 import { extractPage, estimateVisionCost } from './vision.js';
 import { assertValidSlug } from '../store/index.js';
+import { modelFor } from '../models.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '../../..');
@@ -230,7 +231,7 @@ export async function ingestDocument({
   let analyzed = 0;
   let analysisFailed = 0;
   if (analysisClient) {
-    const model = profile.analysis?.model || 'claude-haiku-4-5';
+    const model = profile.analysis?.model || modelFor('analysis');
     onProgress({ stage: 'analyze', filename: safeName, done: 0, total: chunks.length });
     const results = await mapWithConcurrency(chunks, ANALYSIS_CONCURRENCY, async (c) => {
       let r = null;
