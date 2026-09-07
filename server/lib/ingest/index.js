@@ -23,9 +23,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { chunkPages } from './chunk.js';
+import { chunkPages, chunkText } from './chunk.js';
 import { parseDocument, detectIngestMode, textVolume } from './parse.js';
 import { renderExtractSchema } from '../subjects.js';
+import { renderPages, pageCount } from './render.js';
+import { extractPage, estimateVisionCost } from './vision.js';
 import { assertValidSlug } from '../store/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -153,10 +155,20 @@ export async function ingestDocument({
   filePath, filename = path.basename(filePath),
   keepOriginal = true,
   onProgress = () => {},
+  ...opts
 }) {
   const slug = profile.slug;
   const safeName = safeFilename(filename);
   const warnings = [];
+
+  // A scanned document takes a different route entirely: rendered and read
+  // page by page rather than parsed. Chosen by the subject, or per document.
+  if ((opts.mode ?? profile.ingest.mode) === 'vision') {
+    return ingestVisionDocument({
+      profile, store, embedder, analysisClient, filePath,
+      filename: safeName, keepOriginal, onProgress, ...opts,
+    });
+  }
 
   // ─── Parse ─────────────────────────────────────────────────────────────────
   onProgress({ stage: 'parse', filename: safeName });
@@ -169,16 +181,11 @@ export async function ingestDocument({
   if (detected === 'vision') {
     throw new Error(
       `"${safeName}" has almost no extractable text (${textVolume(pages)} characters across ` +
-      `${pages.length} page(s)) — it is very likely a scan. Scanned documents need vision ` +
-      `ingestion, which is not implemented yet (ARCHITECTURE_PLAN.md Phase 4).`,
+      `${pages.length} page(s)) — it is a scan and needs vision ingestion. Set the subject's ` +
+      `ingest.mode to "vision", or pass mode:"vision" for this document.`,
     );
   }
-  if (profile.ingest.mode === 'vision') {
-    throw new Error(
-      `Subject "${slug}" is configured for vision ingestion, which is not implemented yet ` +
-      `(ARCHITECTURE_PLAN.md Phase 4). Set ingest.mode to "text" to use this pipeline.`,
-    );
-  }
+  // (vision is handled before this point — see ingestVisionDocument)
 
   // ─── Chunk ─────────────────────────────────────────────────────────────────
   onProgress({ stage: 'chunk', filename: safeName });
@@ -287,6 +294,170 @@ export async function ingestDocument({
     embedded,
     searchable: embedded > 0,
     originalKept: retain,
+    warnings,
+  };
+}
+
+/**
+ * Ingest a scanned document by looking at every page.
+ *
+ * Committed PAGE BY PAGE, which is the whole design. A several-hundred-page run
+ * will hit a rate limit or a transient error somewhere, and a run that has to
+ * start over each time never finishes. Re-running skips pages already stored,
+ * so it resumes; pages that fail are collected and reported rather than
+ * aborting the batch.
+ *
+ * This is the expensive path — one vision call per page — so it reports an
+ * estimate before starting and the real usage after.
+ */
+export async function ingestVisionDocument({
+  profile, store, embedder, analysisClient,
+  filePath, filename, keepOriginal = true,
+  scale = 2,
+  start = 0,
+  end = null,
+  resume = true,
+  onProgress = () => {},
+}) {
+  const slug = profile.slug;
+  const safeName = safeFilename(filename);
+  const warnings = [];
+
+  if (!analysisClient) {
+    throw new Error(
+      'Vision ingestion needs ANTHROPIC_API_KEY — the page images have to be read by a model. ' +
+      'There is no offline path for a scan.',
+    );
+  }
+
+  const total = await pageCount(filePath);
+  const last = end == null ? total : Math.min(end, total);
+  const estimate = estimateVisionCost(last - start, { model: profile.ingest.visionModel });
+
+  onProgress({ stage: 'vision', filename: safeName, done: 0, total: last - start, estimateUsd: estimate.usd });
+
+  // Which pages are already stored? Chunk ids are "<file>::p<page>::<n>", so
+  // the stored set is derivable without a separate bookkeeping table.
+  const done = new Set();
+  if (resume) {
+    try {
+      for (const c of await store.getChunks(slug)) {
+        if (c.source === safeName && c.pdfPage != null) done.add(c.pdfPage);
+      }
+    } catch { /* nothing stored yet */ }
+  }
+  if (done.size > 0) {
+    warnings.push(`Resumed: ${done.size} page(s) were already stored and were not re-read.`);
+  }
+
+  await store.initSubject(slug, {
+    dim: profile.embed.dim,
+    embedModel: profile.embed.model,
+    name: profile.name,
+  });
+
+  const extraSchema = renderExtractSchema(profile);
+  const failures = [];
+  let pagesRead = 0;
+  let chunksStored = 0;
+  let embedded = 0;
+  let usageIn = 0;
+  let usageOut = 0;
+
+  for await (const { pdfPage, png } of renderPages(filePath, { start, end: last, scale, skip: done })) {
+    let page;
+    try {
+      page = await extractPage({
+        client: analysisClient,
+        profile,
+        png,
+        pdfPage,
+        model: profile.ingest.visionModel || undefined,
+        extraSchema,
+      });
+    } catch (err) {
+      failures.push({ pdfPage, error: err.message });
+      onProgress({ stage: 'vision', filename: safeName, done: pagesRead, total: last - start, failed: failures.length });
+      continue;
+    }
+
+    pagesRead++;
+    usageIn  += page.usage?.input_tokens ?? 0;
+    usageOut += page.usage?.output_tokens ?? 0;
+
+    if (page.isBlank || !page.markdown.trim()) {
+      onProgress({ stage: 'vision', filename: safeName, done: pagesRead, total: last - start });
+      continue;
+    }
+
+    // A manual's pages are self-contained units, so chunking stays WITHIN a
+    // page here — unlike prose ingestion, which packs across page boundaries.
+    // It also keeps the page/chunk mapping exact, which is what citations need.
+    const pieces = chunkText(page.markdown, profile.ingest);
+    const { kept } = dedupeChunks(pieces.map(t => ({ text: t })));
+
+    const chunks = kept.map((p, i) => ({
+      id: `${safeName}::p${pdfPage}::${i}`,
+      documentId: safeName,
+      source: safeName,
+      chunkIndex: pdfPage * 1000 + i,   // page-ordered, stable across resumes
+      text: p.text,
+      summary: '',
+      difficulty: null,
+      concepts: page.componentTags,
+      themes: page.section ? [page.section] : [],
+      extras: { section: page.section, ...page.extras },
+      pdfPage,
+      printedPage: page.printedPage,
+    }));
+
+    if (embedder) {
+      const vectors = await embedder.embedDocuments(chunks.map(c => c.text));
+      chunks.forEach((c, i) => { c.embedding = vectors[i]; });
+      embedded += chunks.length;
+    }
+
+    // Committed here, per page — this is what makes the run resumable.
+    await store.upsertChunks(slug, chunks);
+    chunksStored += chunks.length;
+
+    onProgress({
+      stage: 'vision', filename: safeName,
+      done: pagesRead, total: last - start,
+      chunks: chunksStored, failed: failures.length,
+    });
+  }
+
+  if (keepOriginal && profile.ingest.keepOriginal !== false) {
+    const dir = documentsDir(slug);
+    await fs.mkdir(dir, { recursive: true });
+    const dest = path.join(dir, safeName);
+    if (path.resolve(dest) !== path.resolve(filePath)) await fs.copyFile(filePath, dest);
+  }
+
+  if (failures.length > 0) {
+    warnings.push(
+      `${failures.length} page(s) failed and were skipped. Re-run to retry only those — ` +
+      `pages already stored are not read again.`,
+    );
+  }
+  if (!embedder) {
+    warnings.push('No embedder available — pages are stored but NOT searchable.');
+  }
+
+  return {
+    subject: slug,
+    filename: safeName,
+    mode: 'vision',
+    paged: true,
+    pages: pagesRead,
+    resumedFrom: done.size,
+    chunks: chunksStored,
+    embedded,
+    failures,
+    searchable: embedded > 0,
+    usage: { inputTokens: usageIn, outputTokens: usageOut },
+    estimateUsd: estimate.usd,
     warnings,
   };
 }
