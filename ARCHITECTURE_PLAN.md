@@ -343,11 +343,14 @@ page and citations can link to it.
 
 Also shipped beyond the plan:
 
-- **Per-subject stores.** A subject can point at its own backend, which is how
-  `softail` reads ask_cooter's database in place rather than copying it. Also
-  the cleaner answer for multi-tenancy — a tenant can own its whole database.
+- **Per-subject stores.** A subject can point at its own backend — the cleaner
+  answer for multi-tenancy, since a tenant can own its whole database rather
+  than a schema in a shared one.
 - **[store/askcooter.js](server/lib/store/askcooter.js)** — read-only adapter
   translating a foreign schema into the canonical chunk. Every write throws.
+  `softail` was built on it and has since been imported into SageStack's own
+  database (see below), so the adapter is now a capability rather than
+  something a shipped subject depends on.
 - **UI rebuilt on ask_cooter's design** — full-width, split scan/text page
   viewer with zoom and pan, and inline `[p.N]` citations that open the page.
 - **[conceptmap.js](server/lib/conceptmap.js)** — subject-agnostic concept map

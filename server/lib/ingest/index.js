@@ -41,6 +41,18 @@ export function documentsDir(slug) {
   return path.join(REPO_ROOT, 'data/documents', assertValidSlug(slug));
 }
 
+/**
+ * Where rendered page scans live for a subject.
+ *
+ * A scan is the exact image the vision model read, which makes it a better
+ * thing to show beside an answer than a re-rendered PDF page would be. Kept
+ * per subject and outside the store so it works the same whether the chunks
+ * are in files or Postgres.
+ */
+export function pagesDir(slug) {
+  return path.join(REPO_ROOT, 'data/pages', assertValidSlug(slug));
+}
+
 /** Reject anything that would escape the subject's document directory. */
 export function safeFilename(filename) {
   const base = path.basename(String(filename || '').trim());

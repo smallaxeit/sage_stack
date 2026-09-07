@@ -168,6 +168,27 @@ so connection strings stay out of a committed file.
 Such a store is **read-only** — writes throw rather than silently doing
 nothing, and the UI hides the upload box.
 
+### Importing instead
+
+Reading in place keeps one subject on a different code path and tied to another
+project's disk layout. Where the data can be copied, copy it:
+
+```bash
+node server/scripts/import-askcooter.js --subject softail --dry-run
+node server/scripts/import-askcooter.js --subject softail
+```
+
+Chunks come across with their embeddings intact — they cost real money to
+produce, and re-embedding would both spend that again and change the vectors —
+along with page text and the rendered scans, which land in `data/pages/<subject>/`.
+The source database is only read, so the other project keeps working. Then
+delete the `store` block from the subject and it is an ordinary subject.
+
+The import verifies itself: counts on both sides, page text, section list, and
+a component-wise comparison of the first vector, which is the check that catches
+a copy that shuffled embeddings between chunks — the failure that otherwise
+stays silent and returns confident nonsense.
+
 ---
 
 ## Embedding models
