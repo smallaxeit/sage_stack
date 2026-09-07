@@ -189,6 +189,12 @@ export function createAskCooterStore(opts = {}) {
 
     // A borrowed database has nowhere to put our settings, and pretending to
     // save them would lose a user's selection silently.
+    async listExtraValues(slug, key) {
+      const r = await q(`SELECT p.${key === 'componentTags' ? 'component_tags' : 'specs'} AS v FROM pages p`)
+        .catch(() => ({ rows: [] }));
+      return r.rows.map(x => x.v).filter(v => v != null);
+    },
+
     async getSettings() { return {}; },
     saveSettings: readOnly('saveSettings'),
 

@@ -361,6 +361,21 @@ export function createPostgresStore(opts = {}) {
       return r.rows[0]?.concept_map ?? null;
     },
 
+    /**
+     * Just one extras field from every chunk, without their text.
+     *
+     * Projecting in SQL rather than filtering client-side: the previous
+     * approach transferred every chunk's full text to read one small field.
+     */
+    async listExtraValues(slug, key) {
+      await requireSubject(slug);
+      const r = await q(
+        `SELECT extras -> $1 AS v FROM "${slug}".chunks WHERE extras ? $1`,
+        [key],
+      );
+      return r.rows.map(row => row.v).filter(v => v != null);
+    },
+
     // ─── Settings ────────────────────────────────────────────────────────────
 
     async getSettings(slug) {

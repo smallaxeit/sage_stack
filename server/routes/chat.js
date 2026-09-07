@@ -289,8 +289,11 @@ router.get('/settings', async (req, res) => {
     let available = [];
     if (key) {
       try {
-        const chunks = await store.getChunks(subject);
-        available = availableTerms(chunks, key);
+        // A projection, not every chunk — see listExtraValues.
+        const values = store.listExtraValues
+          ? await store.listExtraValues(subject, key)
+          : await store.getChunks(subject);
+        available = availableTerms(values, key);
       } catch { /* nothing loaded yet */ }
     }
 

@@ -314,6 +314,24 @@ export function createFilesStore(opts = {}) {
       catch { return null; }
     },
 
+    /**
+     * Just one extras field from every chunk, without their text.
+     *
+     * Exists because building the "what can I select" list from getChunks
+     * pulled the entire subject into memory — 16MB of text for theology — to
+     * read one small field, on every settings request.
+     */
+    async listExtraValues(slug, key) {
+      const state = await load(slug);
+      if (!state) return [];
+      const out = [];
+      for (const c of state.chunks) {
+        const v = c.extras?.[key];
+        if (v != null) out.push(v);
+      }
+      return out;
+    },
+
     // ─── Settings ────────────────────────────────────────────────────────────
     // Small mutable state owned by the subject, not by a conversation. Kept in
     // its own file rather than the manifest, which the ingest path rewrites
