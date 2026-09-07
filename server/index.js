@@ -50,7 +50,7 @@ async function reportSubjects() {
         ? `${s.chunks} chunks, ${s.withEmbedding} embedded (${s.embedModel ?? 'model unknown'}, ${s.dim}d)`
         : s.chunks > 0
           ? `${s.chunks} chunks, NOT EMBEDDED — run the embedding backfill`
-          : 'not built — run npm run build:knowledge';
+          : 'not built — add documents in the Knowledge screen, or POST /api/build';
       console.log(`  ${s.ready ? 'ok  ' : '--  '} ${s.slug.padEnd(12)} ${state}`);
     }
     for (const e of errors) {

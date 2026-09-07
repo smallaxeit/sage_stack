@@ -148,7 +148,7 @@ const DEFAULTS = {
   chat:          { model: 'claude-sonnet-5', maxTokens: 4096 },
   extract:       {},
   conceptMap:    { enabled: false },
-  retrieval:     { topK: 10, rewriteFollowUps: true },
+  retrieval:     { topK: 10, rewriteFollowUps: true, filterKey: null, overfetch: 3, boost: 0.12 },
   sourceAliases: {},           // filename -> human-readable title
   store:         null,         // null = use the app-wide KB_STORE; else a per-subject backend
   rules:         DEFAULT_RULES,
@@ -237,6 +237,20 @@ export function normalizeProfile(slug, raw = {}) {
   if (!Number.isInteger(p.ingest.chunkTarget) || !Number.isInteger(p.ingest.chunkMax)
       || p.ingest.chunkTarget <= 0 || p.ingest.chunkMax < p.ingest.chunkTarget) {
     fail(slug, 'ingest.chunkTarget and chunkMax must be positive integers with chunkMax >= chunkTarget');
+  }
+  if (p.retrieval.filterKey != null && typeof p.retrieval.filterKey !== 'string') {
+    fail(slug, 'retrieval.filterKey must be the name of an extract field, or null');
+  }
+  if (p.retrieval.filterKey && !(p.retrieval.filterKey in p.extract)) {
+    // Otherwise the reader's selection silently matches nothing, which reads
+    // as "the documents do not mention that".
+    fail(slug, `retrieval.filterKey "${p.retrieval.filterKey}" is not a field in extract`);
+  }
+  if (!Number.isInteger(p.retrieval.overfetch) || p.retrieval.overfetch < 1) {
+    fail(slug, 'retrieval.overfetch must be an integer of at least 1');
+  }
+  if (!Number.isFinite(p.retrieval.boost) || p.retrieval.boost < 0 || p.retrieval.boost > 1) {
+    fail(slug, 'retrieval.boost must be between 0 and 1');
   }
   if (typeof p.retrieval.rewriteFollowUps !== 'boolean') {
     fail(slug, 'retrieval.rewriteFollowUps must be true or false');

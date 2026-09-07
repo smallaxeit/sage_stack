@@ -364,7 +364,11 @@ export function createPostgresStore(opts = {}) {
     // ─── Settings ────────────────────────────────────────────────────────────
 
     async getSettings(slug) {
-      await requireSubject(slug);
+      // Deliberately does NOT require the subject to exist. A reader can set
+      // their list before loading any documents, and the UI reads this on every
+      // subject — an error for "not built yet" would be wrong on both counts.
+      await ensureReady();
+      assertValidSlug(slug);
       const r = await q(`SELECT settings FROM public.sagestack_subjects WHERE slug = $1`, [slug]);
       return r.rows[0]?.settings ?? {};
     },

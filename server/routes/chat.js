@@ -7,6 +7,7 @@ import { getRuntime } from '../lib/runtime.js';
 import { subjectSourceDir } from '../lib/subjects.js';
 import { ingestDirectory } from '../lib/ingest/index.js';
 import { requireAdmin } from '../lib/auth.js';
+import { availableTerms } from '../lib/prefer.js';
 
 const router = Router();
 
@@ -267,6 +268,89 @@ export function explainChatError(err) {
   }
   return detail;
 }
+
+// ─── Subject settings ─────────────────────────────────────────────────────────
+// Small state belonging to a knowledge area rather than a conversation. For Rx
+// this is the reader's current medication list, which has to survive starting a
+// new chat and restarting the server.
+
+router.get('/settings', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const subject = await resolveSubject(req);
+    const profile = await rt.getProfile(subject);
+    const store = rt.getStore(profile);
+
+    const settings = store.getSettings ? await store.getSettings(subject) : {};
+    const key = profile.retrieval.filterKey;
+
+    // What could be selected, drawn from what the documents actually contain —
+    // offering something with nothing behind it produces an empty answer.
+    let available = [];
+    if (key) {
+      try {
+        const chunks = await store.getChunks(subject);
+        available = availableTerms(chunks, key);
+      } catch { /* nothing loaded yet */ }
+    }
+
+    res.json({
+      subject,
+      filterKey: key,
+      // A label the UI can show without knowing what the subject is about.
+      filterLabel: key ? key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() : null,
+      active: key ? (settings[key] ?? []) : [],
+      available,
+      settings,
+      readOnly: !!store.readOnly,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/settings', async (req, res) => {
+  try {
+    const rt = getRuntime();
+    const subject = await resolveSubject(req);
+    const profile = await rt.getProfile(subject);
+    const store = rt.getStore(profile);
+
+    if (!store.saveSettings || store.readOnly) {
+      return res.status(409).json({
+        error: `Subject "${subject}" is backed by a read-only store, so its settings cannot be saved.`,
+      });
+    }
+
+    // Settings need a row to live in, and a reader may set their list before
+    // loading anything. Registering an empty subject is idempotent and cheap.
+    await store.initSubject(subject, {
+      dim: profile.embed.dim,
+      embedModel: profile.embed.model,
+      name: profile.name,
+    });
+
+    const key = profile.retrieval.filterKey;
+    const current = await store.getSettings(subject);
+
+    // Only the configured list is writable from here. An open settings blob
+    // would be a way to put arbitrary text into the prompt.
+    if (key && Array.isArray(req.body?.active)) {
+      const cleaned = [...new Set(
+        req.body.active
+          .filter(x => typeof x === 'string')
+          .map(x => x.trim().toLowerCase())
+          .filter(Boolean),
+      )].slice(0, 100);
+      current[key] = cleaned;
+    }
+
+    await store.saveSettings(subject, current);
+    res.json({ subject, filterKey: key, active: key ? (current[key] ?? []) : [] });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 // ─── Conversation history ─────────────────────────────────────────────────────
 // Sessions were already persisted per subject on every turn; they were just

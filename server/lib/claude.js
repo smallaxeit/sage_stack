@@ -19,6 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, friendlySourceName } from './subjects.js';
 import { assertEmbedderMatchesSubject } from './embed/index.js';
 import { resolveSearchQuery } from './rewrite.js';
+import { preferRank } from './prefer.js';
 
 let _client = null;
 function defaultClient() {
@@ -142,8 +143,36 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
       guarded = true;
     }
     const vec = await embedder.embedQuery(query);
-    return store.searchByVector(profile.slug, vec, profile.retrieval.topK);
+    const { topK, filterKey, overfetch = 3, boost } = profile.retrieval;
+
+    // With no preference configured this is an ordinary top-K.
+    const active = filterKey ? await activeTerms() : [];
+    if (!filterKey || active.length === 0) {
+      return store.searchByVector(profile.slug, vec, topK);
+    }
+
+    // Fetch wider than needed so a preferred passage ranked just outside topK
+    // can still be pulled in. Re-ranking a list that was already truncated
+    // could not recover it.
+    const wide = await store.searchByVector(profile.slug, vec, topK * overfetch);
+    return preferRank(wide, { key: filterKey, active, boost, limit: topK });
   };
+
+  /**
+   * What the reader has nominated as currently relevant — for Rx, the drugs
+   * they are taking. Read per request rather than cached: it is changed from
+   * the UI mid-conversation and must take effect on the next question.
+   */
+  async function activeTerms() {
+    if (!store?.getSettings) return [];
+    try {
+      const settings = await store.getSettings(profile.slug);
+      const list = settings?.[profile.retrieval.filterKey];
+      return Array.isArray(list) ? list.filter(x => typeof x === 'string' && x.trim()) : [];
+    } catch {
+      return [];   // settings are an enhancement; never fail a question over them
+    }
+  }
 
   const doRetrieve = retrieve || defaultRetrieve;
 
@@ -177,6 +206,21 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     const hasPages = results.some(r => r.pdfPage != null);
     const stable = buildSystemPrompt(profile, { mode, conceptMap, hasPages });
 
+    // The active list goes in the VARYING block, not the cached prefix — it
+    // changes independently of the subject, and putting it in the prefix would
+    // invalidate the cache every time the reader edited their list.
+    const active = profile.retrieval.filterKey ? await activeTerms() : [];
+    const activeNote = active.length
+      ? `
+
+THE READER'S CURRENT ${String(profile.retrieval.filterKey).toUpperCase()}: ` +
+        `${active.join(', ')}.
+` +
+        `A question without a stated subject is about these. Questions about anything ` +
+        `else are still fair — asking whether to add or avoid something is the point.
+`
+      : '';
+
     /**
      * The system prompt is sent as TWO blocks so the first can be cached.
      *
@@ -193,10 +237,10 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
      */
     const systemBlocks = [
       { type: 'text', text: stable, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: ctx.contextStr },
+      { type: 'text', text: activeNote + ctx.contextStr },
     ];
 
-    return { ...ctx, systemBlocks, systemPrompt: stable + ctx.contextStr };
+    return { ...ctx, systemBlocks, activeTerms: active, systemPrompt: stable + activeNote + ctx.contextStr };
   }
 
   /** Report cache effectiveness — zero reads across repeats means a silent invalidator. */

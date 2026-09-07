@@ -4,6 +4,7 @@ import KnowledgePanel from './components/KnowledgePanel';
 import DocumentBrowser from './components/DocumentBrowser';
 import PageViewer from './components/PageViewer';
 import AdminPanel from './components/AdminPanel';
+import ActiveList from './components/ActiveList';
 
 /**
  * Shell, in ask_cooter's layout: a thin header, a collapsible left sidebar, and
@@ -179,6 +180,10 @@ export default function App() {
           title="Toggle theme"
         >◐</button>
       </header>
+
+      {/* Renders only for subjects that nominate a filter field. It changes
+          what every answer means, so it sits where an answer is read. */}
+      <ActiveList subject={subject} />
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         {sidebar && (
