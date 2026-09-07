@@ -147,7 +147,7 @@ does need a restart, since profiles are cached.
 
 ---
 
-## Connecting to an existing corpus
+## Connecting to a database built elsewhere
 
 A subject can read from a database it does not own:
 
@@ -202,7 +202,7 @@ Embeds every chunk that has no vector, in batches, and leaves the rest alone.
 Opt-in per subject (`conceptMap.enabled`). It aggregates the concepts that
 per-chunk analysis already extracted, so it costs a few calls rather than one
 per chunk — but it is injected into **every** request's system prompt, so it
-is a per-query cost too. Worth it across a broad corpus; noise for a single
+is a per-query cost too. Worth it across a broad documents; noise for a single
 manual.
 
 ```
