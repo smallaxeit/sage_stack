@@ -143,7 +143,7 @@ export const DEFAULT_MODES = {
 const DEFAULTS = {
   name:          null,        // falls back to slug
   voice:         null,        // REQUIRED
-  ingest:        { mode: 'auto', chunkTarget: 1400, chunkMax: 2200, keepOriginal: true },
+  ingest:        { mode: 'auto', chunkTarget: 1400, chunkMax: 2200, keepOriginal: true, visionModel: null, renderScale: 2 },
   embed:         { driver: 'voyage', model: 'voyage-3.5', dim: 1024 },
   chat:          { model: 'claude-sonnet-5', maxTokens: 4096 },
   extract:       {},
@@ -215,6 +215,12 @@ export function normalizeProfile(slug, raw = {}) {
 
   if (typeof p.voice !== 'string' || !p.voice.trim()) {
     fail(slug, 'a non-empty "voice" is required — it is the teaching persona for this subject');
+  }
+  if (p.ingest.visionModel != null && typeof p.ingest.visionModel !== 'string') {
+    fail(slug, 'ingest.visionModel must be a model id string, or null for the default');
+  }
+  if (!Number.isFinite(p.ingest.renderScale) || p.ingest.renderScale <= 0) {
+    fail(slug, 'ingest.renderScale must be a positive number (2 is ~150 DPI)');
   }
   if (typeof p.ingest.keepOriginal !== 'boolean') {
     fail(slug, 'ingest.keepOriginal must be true or false');
