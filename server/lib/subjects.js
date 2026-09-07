@@ -148,7 +148,8 @@ const DEFAULTS = {
   chat:          { model: 'claude-sonnet-5', maxTokens: 4096 },
   extract:       {},
   conceptMap:    { enabled: false },
-  retrieval:     { topK: 10, rewriteFollowUps: true, filterKey: null, overfetch: 3, boost: 0.12 },
+  retrieval:     { topK: 10, rewriteFollowUps: true, filterKey: null, filterFields: null, overfetch: 3, boost: 0.12,
+                   contextMode: 'search', maxContextChars: 500_000, coverPerTerm: 1 },
   sourceAliases: {},           // filename -> human-readable title
   store:         null,         // null = use the app-wide KB_STORE; else a per-subject backend
   rules:         DEFAULT_RULES,
@@ -246,6 +247,10 @@ export function normalizeProfile(slug, raw = {}) {
     // as "the documents do not mention that".
     fail(slug, `retrieval.filterKey "${p.retrieval.filterKey}" is not a field in extract`);
   }
+  if (p.retrieval.filterFields != null &&
+      (!Array.isArray(p.retrieval.filterFields) || p.retrieval.filterFields.some(x => typeof x !== 'string'))) {
+    fail(slug, 'retrieval.filterFields must be an array of field names, or null for all of them');
+  }
   if (!Number.isInteger(p.retrieval.overfetch) || p.retrieval.overfetch < 1) {
     fail(slug, 'retrieval.overfetch must be an integer of at least 1');
   }
@@ -257,6 +262,18 @@ export function normalizeProfile(slug, raw = {}) {
   }
   if (!Number.isInteger(p.retrieval.topK) || p.retrieval.topK <= 0) {
     fail(slug, `retrieval.topK must be a positive integer (got ${JSON.stringify(p.retrieval.topK)})`);
+  }
+  // "all" sends every chunk instead of ranking. Sound only while the documents
+  // fit the budget; past it the subject falls back to search rather than
+  // truncating, so topK stays meaningful either way.
+  if (!['search', 'all'].includes(p.retrieval.contextMode)) {
+    fail(slug, `retrieval.contextMode must be "search" or "all" (got ${JSON.stringify(p.retrieval.contextMode)})`);
+  }
+  if (!Number.isInteger(p.retrieval.maxContextChars) || p.retrieval.maxContextChars <= 0) {
+    fail(slug, 'retrieval.maxContextChars must be a positive integer');
+  }
+  if (!Number.isInteger(p.retrieval.coverPerTerm) || p.retrieval.coverPerTerm < 0) {
+    fail(slug, 'retrieval.coverPerTerm must be a non-negative integer');
   }
   if (typeof p.chat.model !== 'string' || !p.chat.model.trim()) {
     fail(slug, 'chat.model must be a model id string');

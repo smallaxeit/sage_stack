@@ -293,7 +293,7 @@ router.get('/settings', async (req, res) => {
         const values = store.listExtraValues
           ? await store.listExtraValues(subject, key)
           : await store.getChunks(subject);
-        available = availableTerms(values, key);
+        available = availableTerms(values, key, { fields: profile.retrieval.filterFields });
       } catch { /* nothing loaded yet */ }
     }
 
