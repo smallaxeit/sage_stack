@@ -191,7 +191,7 @@ router.post('/chat', async (req, res) => {
   req.on('close', () => { aborted = true; clearInterval(keepalive); });
 
   try {
-    const { text: reply, sources, chips } = await teacher.chatStream(
+    const { text: reply, sources, chips, cost } = await teacher.chatStream(
       history,
       chunk => send({ chunk }),
       { mode, onStage: (stage) => send({ stage }) },
@@ -203,7 +203,7 @@ router.post('/chat', async (req, res) => {
     if (history.length > 40) history.splice(0, 2);
     await rt.store.saveSession(key, history);
 
-    send({ done: true, sessionId: id, subject, sources, chips });
+    send({ done: true, sessionId: id, subject, sources, chips, cost });
     res.end();
   } catch (err) {
     console.error(`[${subject}] chat error:`, err);

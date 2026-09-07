@@ -1,0 +1,66 @@
+{
+  "_comment": "Every model this app calls, and what each one costs. Models used to be hardcoded across six files and priced in two of them, which is how the vision estimator ended up quoting Sonnet at $2/$10 while the chat path priced it at $3/$15. One file, one answer.",
+
+  "_purposes": "A purpose is a job, not a model. Code asks for the job; this file decides what runs it. A subject profile may override its own chat, embed or analysis model, and SAGESTACK_MODEL_<PURPOSE> overrides everything for a one-off run.",
+
+  "purposes": {
+    "chat": {
+      "model": "claude-sonnet-5",
+      "maxTokens": 4096,
+      "note": "Answers questions from retrieved passages. Per subject via chat.model."
+    },
+    "rewrite": {
+      "model": "claude-haiku-4-5",
+      "maxTokens": 200,
+      "note": "Makes a follow-up standalone before the vector search. ~250 tokens in, ~30 out, so the cheap tier."
+    },
+    "analysis": {
+      "model": "claude-haiku-4-5",
+      "note": "One call per chunk at ingest, for summary, concepts and the subject's extract fields. Runs thousands of times, so the cheap tier matters most here."
+    },
+    "conceptMap": {
+      "model": "claude-sonnet-5",
+      "note": "Aggregates what analysis extracted into a map of the subject. Once per build, long output."
+    },
+    "vision": {
+      "model": "claude-sonnet-5",
+      "fallback": "claude-opus-5",
+      "note": "Reads scanned pages that carry no extractable text. The fallback is tried only when the primary fails on a page — plain OCR reads body text acceptably while mangling the tables and diagrams that are usually the point."
+    },
+    "embed": {
+      "model": "voyage-3.5",
+      "dim": 1024,
+      "note": "Query and chunk vectors. Changing this means re-embedding: vectors from different models are not interchangeable, and a mismatch returns confident nonsense rather than an error."
+    }
+  },
+
+  "_pricing": "USD per MILLION tokens. Checked against docs.claude.com/en/docs/about-claude/pricing when edited. These DO change; a model with no entry is reported as unpriced rather than free, because a wrong price is worse than no price.",
+
+  "pricing": {
+    "text": {
+      "claude-opus-5":    { "input": 15, "output": 75 },
+      "claude-sonnet-5":  { "input": 3,  "output": 15 },
+      "claude-haiku-4-5": { "input": 1,  "output": 5 }
+    },
+    "embedding": {
+      "voyage-3.5":     0.06,
+      "voyage-3":       0.06,
+      "voyage-3-large": 0.18
+    }
+  },
+
+  "_cacheMultiplier": "Prompt caching is billed as a multiple of a model's own input rate, not as separate per-model numbers: a 5-minute write costs 1.25x input, a 1-hour write 2x, and a read a tenth.",
+
+  "cacheMultiplier": {
+    "write5m": 1.25,
+    "write1h": 2,
+    "read": 0.1
+  },
+
+  "_visionEstimate": "Tokens per page for the pre-run estimate. A 150-DPI page is on the order of 1,500 input tokens; output varies with page density. Deliberately an over-estimate — the useful error is being pleasantly surprised.",
+
+  "visionEstimate": {
+    "inputTokensPerPage": 1800,
+    "outputTokensPerPage": 1200
+  }
+}

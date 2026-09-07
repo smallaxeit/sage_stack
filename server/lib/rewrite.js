@@ -18,7 +18,9 @@
  * failed retrieval wastes the whole turn anyway.
  */
 
-const REWRITE_MODEL = 'claude-haiku-4-5';
+import { purposeConfig } from './models.js';
+
+const { model: REWRITE_MODEL, maxTokens: REWRITE_MAX_TOKENS } = purposeConfig('rewrite');
 
 /** How many prior turns to show. Enough for a pronoun, not enough to drift. */
 const CONTEXT_TURNS = 4;
@@ -96,7 +98,7 @@ export async function resolveSearchQuery({ messages, client, model = REWRITE_MOD
   try {
     const res = await client.messages.create({
       model,
-      max_tokens: 200,
+      max_tokens: REWRITE_MAX_TOKENS,
       messages: [{ role: 'user', content: buildRewritePrompt(history, question) }],
     });
     const out = res.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().split('\n')[0].trim();
@@ -108,7 +110,12 @@ export async function resolveSearchQuery({ messages, client, model = REWRITE_MOD
     }
 
     log?.log?.(`[rewrite] "${question}" -> "${out}"`);
-    return { query: out, rewritten: out !== question, reason: 'rewritten', original: question };
+    // usage travels with the result so the question's full cost can be
+    // reported — a rewrite is a second billed call, small but not free.
+    return {
+      query: out, rewritten: out !== question, reason: 'rewritten', original: question,
+      usage: res.usage, model,
+    };
   } catch (err) {
     // Never fail a chat because the rewrite failed.
     log?.log?.(`[rewrite] failed, using the original question: ${err.message}`);

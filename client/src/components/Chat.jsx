@@ -127,6 +127,7 @@ export default function Chat({
                 ...next[next.length - 1],
                 sources: ev.sources || [],
                 chips: ev.chips || [],
+                cost: ev.cost || null,
                 streaming: false,
                 stage: null,
               };
@@ -200,6 +201,7 @@ export default function Chat({
                 content={m.content}
                 sources={m.sources}
                 chips={m.chips}
+                cost={m.cost}
                 streaming={m.streaming}
                 stage={m.stage}
                 startedAt={m.startedAt}

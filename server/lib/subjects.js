@@ -21,6 +21,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { assertValidSlug } from './store/index.js';
+import { purposeConfig } from './models.js';
+
+const CHAT = purposeConfig('chat');
+const EMBED = purposeConfig('embed');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, '../..');
@@ -144,12 +148,14 @@ const DEFAULTS = {
   name:          null,        // falls back to slug
   voice:         null,        // REQUIRED
   ingest:        { mode: 'auto', chunkTarget: 1400, chunkMax: 2200, keepOriginal: true, visionModel: null, renderScale: 2 },
-  embed:         { driver: 'voyage', model: 'voyage-3.5', dim: 1024 },
-  chat:          { model: 'claude-sonnet-5', maxTokens: 4096 },
+  // A subject may name its own models; these are what it gets otherwise, and
+  // they come from config/models.json rather than from here.
+  embed:         { driver: 'voyage', model: EMBED.model, dim: EMBED.dim },
+  chat:          { model: CHAT.model, maxTokens: CHAT.maxTokens },
   extract:       {},
   conceptMap:    { enabled: false },
   retrieval:     { topK: 10, rewriteFollowUps: true, filterKey: null, filterFields: null, overfetch: 3, boost: 0.12,
-                   contextMode: 'search', maxContextChars: 500_000, coverPerTerm: 1 },
+                   contextMode: 'search', maxContextChars: 250_000, coverPerTerm: 1 },
   sourceAliases: {},           // filename -> human-readable title
   store:         null,         // null = use the app-wide KB_STORE; else a per-subject backend
   rules:         DEFAULT_RULES,

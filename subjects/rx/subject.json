@@ -27,15 +27,14 @@
     "dim": 1024
   },
   "retrieval": {
-    "contextMode": "all",
-    "_contextModeNote": "Every chunk goes to the model, every question. The documents are small enough to fit, and ranking could only ever remove one of the reader's drugs from an answer about their drugs — which it did. Identical passages every question also means they cache, so this costs less per question than ranked retrieval did. topK and the preference settings below stay as the fallback if the documents outgrow maxContextChars.",
-    "maxContextChars": 500000,
-    "topK": 16,
+    "contextMode": "search",
+    "_contextModeNote": "Tried \"all\" (every chunk, every question) to guarantee no drug could be ranked out. It works and it caches, but 121 chunks is 102k tokens here — the answer took 169 seconds to start, which is a worse experience than the bug it was fixing. The chunks are also oversized: 77 of 121 exceed chunkMax, so this set of documents is roughly twice the tokens it should be. Re-chunking is the real fix; until then a deep topK plus the per-drug floor below covers every drug at a quarter of the tokens.",
+    "topK": 30,
     "rewriteFollowUps": true,
     "filterKey": "drugs",
     "overfetch": 4,
     "boost": 0.12,
-    "coverPerTerm": 2,
+    "coverPerTerm": 3,
     "filterFields": [
       "generic",
       "brand"

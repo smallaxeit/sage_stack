@@ -18,6 +18,7 @@ import express from 'express';
 import cors from 'cors';
 import { getRuntime } from './lib/runtime.js';
 import { isOpen } from './lib/auth.js';
+import { checkModelPricing } from './lib/models.js';
 import chatRouter from './routes/chat.js';
 import adminRouter from './routes/admin.js';
 import documentsRouter from './routes/documents.js';
@@ -72,6 +73,9 @@ async function init() {
 
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // A model with no price on file still works; it just cannot be costed,
+    // and an answer showing no cost is easier to explain at boot than later.
+    checkModelPricing(console);
     if (isOpen()) {
       console.warn(
         '  ADMIN_KEY is not set: upload, build and delete are unauthenticated. ' +

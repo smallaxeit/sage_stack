@@ -75,8 +75,43 @@ function Thinking({ stage, startedAt }) {
   );
 }
 
+/**
+ * What the question cost.
+ *
+ * Shown because the number is not intuitive: the same question against the
+ * same subject swings by 10x on whether the cached prefix was still warm, and
+ * nothing else in the answer reveals that. The tooltip carries the breakdown
+ * so the headline stays a single glanceable figure.
+ */
+function Cost({ cost }) {
+  if (!cost?.display) return null;
+
+  const t = cost.tokens;
+  const detail = [
+    `${cost.model}`,
+    t && `${t.uncached.toLocaleString()} uncached in`,
+    t?.cacheRead ? `${t.cacheRead.toLocaleString()} from cache` : null,
+    t?.cacheWrite ? `${t.cacheWrite.toLocaleString()} written to cache` : null,
+    t && `${t.output.toLocaleString()} out`,
+    cost.calls > 1 ? `${cost.calls} calls` : null,
+    // A cache miss is the usual reason a question suddenly costs more.
+    cost.cacheHit ? 'cache hit' : 'cache miss — prefix had expired',
+    cost.complete ? null : 'excludes a model with no price on file',
+  ].filter(Boolean).join(' · ');
+
+  return (
+    <div className="label-mini" style={{ marginTop: 10, opacity: 0.55 }} title={detail}>
+      {cost.complete ? '' : '≥ '}{cost.display}
+      {!cost.cacheHit && cost.tokens?.cacheWrite > 0 && (
+        <span style={{ marginLeft: 6, opacity: 0.8 }}>· cache miss</span>
+      )}
+    </div>
+  );
+}
+
 export default function Message({
-  role, content, sources = [], chips = [], streaming = false, stage = null, startedAt = null,
+  role, content, sources = [], chips = [], cost = null,
+  streaming = false, stage = null, startedAt = null,
   onChipClick, onOpenDoc, onOpenCite,
 }) {
   const isUser = role === 'user';
@@ -156,6 +191,8 @@ export default function Message({
           </div>
         </div>
       )}
+
+      {!isUser && <Cost cost={cost} />}
     </div>
   );
 }
