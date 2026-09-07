@@ -172,7 +172,7 @@ router.post('/:subject/upload', requireAdmin, upload.single('file'), async (req,
     const store = rt.getStore(profile);
     if (store.readOnly) {
       throw new Error(
-        `Subject "${subject}" connects to an existing read-only corpus, so it cannot accept uploads. ` +
+        `Subject "${subject}" reads a database built elsewhere, so it cannot accept uploads. ` +
         `Create a SageStack-owned subject to ingest new documents.`,
       );
     }
@@ -186,7 +186,7 @@ router.post('/:subject/upload', requireAdmin, upload.single('file'), async (req,
       ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       : null;
 
-    send({ stage: 'start', filename: req.file.originalname, willEmbed: !!embedder, willAnalyse: !!analysisClient });
+    send({ stage: 'start', filename: req.file.originalname, willEmbed: !!embedder, willAnalyze: !!analysisClient });
 
     const result = await ingestDocument({
       profile,

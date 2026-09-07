@@ -191,6 +191,58 @@ stays silent and returns confident nonsense.
 
 ---
 
+## Choosing models
+
+`config/models.json` decides which model does which job. Nothing in the code
+names a model.
+
+```jsonc
+"purposes": {
+  "chat":       { "model": "claude-sonnet-5", "maxTokens": 4096 },
+  "rewrite":    { "model": "claude-haiku-4-5", "maxTokens": 200 },
+  "analysis":   { "model": "claude-haiku-4-5" },
+  "conceptMap": { "model": "claude-sonnet-5" },
+  "vision":     { "model": "claude-sonnet-5", "fallback": "claude-opus-5" },
+  "embed":      { "model": "voyage-3.5", "dim": 1024 }
+}
+```
+
+Precedence, narrowest first: an explicit argument in code, then the subject's
+own profile (`chat.model`, `embed.model`), then `SAGESTACK_MODEL_<PURPOSE>`,
+then this file. So a one-off experiment needs no edit:
+
+```bash
+SAGESTACK_MODEL_ANALYSIS=claude-opus-5 npm start
+```
+
+**`analysis` is the one worth thinking about.** It runs once per chunk, so it
+is the only genuinely expensive call — roughly $20 per 5,000 chunks. `chat`
+runs once per question and costs cents. Spending on `chat` and economizing on
+`analysis` is usually the right way round.
+
+Changing `embed.model` means re-embedding everything; see below.
+
+### Prices
+
+The same file holds prices, in USD per million tokens, and it is the only copy
+in the project. Update them when they change:
+
+```jsonc
+"pricing": {
+  "text":      { "claude-sonnet-5": { "input": 3, "output": 15 } },
+  "embedding": { "voyage-3.5": 0.06 }
+}
+```
+
+Cache rates are derived from the input rate rather than listed per model,
+because that is how they are billed: a 5-minute write is 1.25x input, a 1-hour
+write 2x, a read a tenth.
+
+A model with no price still works — it just cannot be costed, so answers show
+no figure. The server names any such model at boot.
+
+---
+
 ## Embedding models
 
 **Vectors from different models are not interchangeable, and a mismatch does

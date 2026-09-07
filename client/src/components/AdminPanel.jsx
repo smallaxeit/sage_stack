@@ -14,19 +14,25 @@ import { getAdminKey, setAdminKey as persistAdminKey, adminHeaders } from '../ap
  *    server actually rejects a request, and kept in localStorage.
  *
  * Cost estimates are computed from the subject's real chunk counts rather than
- * quoted as fixed figures, because they scale with the corpus and a stale
+ * quoted as fixed figures, because they scale with what is loaded and a stale
  * number is worse than none.
  */
 
-// Published per-million-token rates, used only to estimate before you spend.
-const RATE = {
-  voyage:      0.06,          // voyage-3.5
-  haikuIn:     1.00, haikuOut: 5.00,
-  sonnetIn:    2.00, sonnetOut: 10.00,
-};
-const TOKENS_PER_CHUNK = 350;   // ~1400 chars at 4 chars/token
+/**
+ * Tokens in one chunk, for estimating before a build.
+ *
+ * A 1400-character chunk at the ~2.5 chars/token measured on real documents.
+ * The older figure assumed 4 chars/token, which is prose; dense, number-heavy
+ * material like drug labeling or a spec table tokenizes considerably worse.
+ */
+const TOKENS_PER_CHUNK = 560;
+const OUTPUT_TOKENS_PER_ANALYSIS = 200;
 
-const money = (n) => (n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
+/** Concept map: one long call over what analysis already extracted. */
+const CONCEPT_MAP_TOKENS = { input: 20000, output: 16000 };
+
+/** Null means the rate is not known yet — show nothing rather than "$0.00". */
+const money = (n) => (n == null ? '—' : n < 0.01 ? '<$0.01' : `$${n.toFixed(2)}`);
 
 function Stat({ label, value, sub, tone }) {
   return (
@@ -49,7 +55,15 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
   const [msg, setMsg] = useState(null);          // { text, kind }
   const [build, setBuild] = useState(null);
   const [conceptMap, setConceptMap] = useState(null);
+  // Which model does what, and what it costs — from the server, so the
+  // estimates below use the same table the server bills against.
+  const [rates, setRates] = useState(null);
   const pollRef = useRef(null);
+
+  useEffect(() => {
+    if (!open || rates) return;
+    fetch('/api/models').then(r => r.json()).then(setRates).catch(() => { /* estimates show — */ });
+  }, [open, rates]);
 
   const readOnly = !!current?.readOnly;
 
@@ -110,12 +124,24 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
 
   const analyzed = docs.reduce((n, d) => n + (d.analyzed || 0), 0);
   const anaPct = chunks > 0 ? Math.round((analyzed / chunks) * 100) : 0;
-  const unanalysed = Math.max(0, chunks - analyzed);
+  const unanalyzed = Math.max(0, chunks - analyzed);
 
-  const costEmbed = (unembedded * TOKENS_PER_CHUNK / 1e6) * RATE.voyage;
-  const costAnalyse = (unanalysed * TOKENS_PER_CHUNK / 1e6) * RATE.haikuIn
-                    + (unanalysed * 200 / 1e6) * RATE.haikuOut;
-  const costMap = (20000 / 1e6) * RATE.sonnetIn + (16000 / 1e6) * RATE.sonnetOut;
+  // Rates come from the server's config, so there is one price table rather
+  // than a copy here that drifts. Null until it loads, and every estimate
+  // below shows nothing rather than a wrong number in the meantime.
+  const textRate = (purpose) => rates?.pricing?.text?.[rates?.purposes?.[purpose]?.model] ?? null;
+  const embedRate = rates?.pricing?.embedding?.[rates?.purposes?.embed?.model] ?? null;
+  const analysisRate = textRate('analysis');
+  const mapRate = textRate('conceptMap');
+
+  const costEmbed = embedRate == null ? null
+    : (unembedded * TOKENS_PER_CHUNK / 1e6) * embedRate;
+  const costAnalyze = analysisRate == null ? null
+    : (unanalyzed * TOKENS_PER_CHUNK / 1e6) * analysisRate.input
+    + (unanalyzed * OUTPUT_TOKENS_PER_ANALYSIS / 1e6) * analysisRate.output;
+  const costMap = mapRate == null ? null
+    : (CONCEPT_MAP_TOKENS.input / 1e6) * mapRate.input
+    + (CONCEPT_MAP_TOKENS.output / 1e6) * mapRate.output;
 
   const buildRunning = build?.status === 'running';
   const mapRunning = conceptMap?.stage && conceptMap.stage !== 'idle' && !conceptMap.finishedAt;
@@ -250,7 +276,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
           {tab === 'actions' && (
             readOnly ? (
               <div className="admin-note">
-                <strong>{current.name}</strong> connects to an existing corpus and is read-only.
+                <strong>{current.name}</strong> reads a database built elsewhere and is read-only.
                 Nothing here can be rebuilt through SageStack.
               </div>
             ) : (
@@ -275,7 +301,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
                     <div className="d">
                       Parse, analyze and embed every file in <code>subjects/{subject}/source/</code>.
                       Re-running updates existing documents in place.
-                      {unanalysed > 0 && <> Analysis of {unanalysed.toLocaleString()} chunks ≈ <span className="cost">{money(costAnalyse)}</span>.</>}
+                      {unanalyzed > 0 && <> Analysis of {unanalyzed.toLocaleString()} chunks ≈ <span className="cost">{money(costAnalyze)}</span>.</>}
                     </div>
                   </div>
                   <button className="btn" disabled={buildRunning} onClick={() => run('/build', 'Build started')}>

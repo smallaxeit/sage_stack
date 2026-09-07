@@ -5,7 +5,7 @@ import Message from './Message';
  * Chat, in ask_cooter's shape.
  *
  * The differences from the old SageStack chat that actually matter:
- *  - full width, not a narrow centred column: manual passages and tables need it
+ *  - full width, not a narrow centered column: manual passages and tables need it
  *  - a textarea, not an input — Enter sends, Shift+Enter is a newline, and it
  *    grows to a cap instead of scrolling one line at a time
  *  - a Stop button, because a long streamed answer you no longer want should be

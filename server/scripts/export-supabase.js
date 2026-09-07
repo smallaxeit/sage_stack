@@ -83,7 +83,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 // ─── Embedding parsing ────────────────────────────────────────────────────────
 
 /**
- * PostgREST serialises pgvector as a string ("[0.1,0.2,...]"), but returns a
+ * PostgREST serializes pgvector as a string ("[0.1,0.2,...]"), but returns a
  * real array under some client/column configurations. Handle both, and never
  * throw — a malformed vector is counted and reported, not fatal.
  */

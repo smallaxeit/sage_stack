@@ -83,6 +83,16 @@ page — **but only when the retrieved passages actually have page numbers**.
 Asking for citations that can't exist makes a model invent them, so the
 instruction is chosen per request from what was actually retrieved.
 
+**Every answer shows what it cost.** A single figure under the reply, with the
+token breakdown in the tooltip. It is there because the number is not
+intuitive: the same question against the same subject swings by 10x on whether
+the cached prefix was still warm, and nothing else in the answer reveals that.
+Estimating from the outside goes wrong in both directions — a measured Rx
+question came to $0.166 against a $0.019 estimate, because dense drug labeling
+runs ~2.5 chars/token rather than the ~3.7 of prose, and because ranked
+retrieval never gets cache hits (its passages differ every question by
+definition).
+
 **Ranking is a compromise, and a small subject need not make it.** Set
 `retrieval.contextMode: "all"` and every chunk goes to the model on every
 question. Ranking exists to choose what will not fit; when it all fits, choosing
@@ -109,11 +119,32 @@ search.
 |---|---|
 | Frontend | React + Vite |
 | Backend | Node + Express |
-| Chat | `claude-sonnet-5` (per subject, configurable) |
-| Chunk analysis | `claude-haiku-4-5` — one call per chunk, so the cheap tier |
-| Concept map | `claude-sonnet-5` — aggregates what analysis extracted |
+| Models | `config/models.json` — one model per job (see below) |
 | Embeddings | Voyage (`voyage-3.5`) or a local ONNX model, pluggable |
 | Storage | files, or any Postgres + pgvector (local, managed, Supabase) — pluggable |
+
+### Models
+
+Every model the app calls lives in [`config/models.json`](config/models.json),
+keyed by **purpose** rather than scattered through the code:
+
+| Purpose | Default | Why |
+|---|---|---|
+| `chat` | `claude-sonnet-5` | answers from retrieved passages |
+| `rewrite` | `claude-haiku-4-5` | makes a follow-up standalone; ~250 tokens in |
+| `analysis` | `claude-haiku-4-5` | one call per chunk, so the cheap tier matters most |
+| `conceptMap` | `claude-sonnet-5` | one long call over what analysis extracted |
+| `vision` | `claude-sonnet-5` | reads scanned pages, falls back to Opus per page |
+| `embed` | `voyage-3.5` | query and chunk vectors |
+
+Override for one run with `SAGESTACK_MODEL_CHAT=…` (any purpose, SCREAMING_SNAKE).
+A subject can also name its own `chat.model` or `embed.model`.
+
+The same file holds **prices**, and they are the only copy. Three existed
+before: the chat path priced Sonnet at $3/$15 while the vision estimator and
+the admin panel both said $2/$10, so every pre-build estimate was a third low.
+A model with no price on file is reported as unpriced rather than free, and the
+server says so at boot.
 
 Storage and embeddings are independent choices. Neither knows about the other,
 and one test suite runs against every storage backend to keep them
@@ -279,6 +310,7 @@ Knowledge screen.
 
 ```
 subjects/<slug>/subject.json     what a knowledge area is
+config/models.json               which model does which job, and what it costs
 data/                            local stores, uploads, page scans (gitignored)
 
 server/
@@ -287,6 +319,9 @@ server/
     runtime.js                   subject registry — profile + store + embedder
     subjects.js                  profile loading, validation, prompt assembly
     claude.js                    retrieval-augmented answering, per subject
+    models.js                    the model registry — purpose → model
+    pricing.js                   what a question cost, from reported usage
+    prefer.js                    soft preference filtering + per-item coverage
     rewrite.js                   makes a follow-up question standalone before search
     conceptmap.js                concept map build
     auth.js                      the admin-key gate
