@@ -8,6 +8,7 @@ import { subjectSourceDir } from '../lib/subjects.js';
 import { ingestDirectory } from '../lib/ingest/index.js';
 import { requireAdmin } from '../lib/auth.js';
 import { availableTerms } from '../lib/prefer.js';
+import { modelConfig } from '../lib/models.js';
 
 const router = Router();
 
@@ -23,6 +24,21 @@ async function resolveSubject(req) {
 }
 
 const sessionKey = (subject, id) => `${subject}::${id}`;
+
+// ─── Models and rates ─────────────────────────────────────────────────────────
+
+/**
+ * What runs each job, and what it costs.
+ *
+ * Served rather than duplicated in the client, which used to carry its own
+ * rate table quoting Sonnet at $2/$10 against the real $3/$15 — so every
+ * pre-build estimate it showed was a third low. Public: these are published
+ * list prices, and the estimate is most useful before anyone has a key.
+ */
+router.get('/models', (req, res) => {
+  const { purposes, pricing, cacheMultiplier, visionEstimate } = modelConfig();
+  res.json({ purposes, pricing, cacheMultiplier, visionEstimate });
+});
 
 // ─── Status ───────────────────────────────────────────────────────────────────
 
@@ -222,7 +238,7 @@ router.post('/chat', async (req, res) => {
  * Turn an SDK/API failure into something an operator can act on.
  *
  * These are the failures that actually stop the app, and each has exactly one
- * fix. Anything unrecognised falls through with its own message rather than
+ * fix. Anything unrecognized falls through with its own message rather than
  * being flattened into "something went wrong".
  */
 export function explainChatError(err) {
