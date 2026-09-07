@@ -176,6 +176,24 @@ export function createPostgresStore(opts = {}) {
           embedding    vector(${dim}),
           created_at   timestamptz NOT NULL DEFAULT now()
         )`);
+      // One row per page of a paged document. Chunks carry pdf_page already, so
+      // this is not needed for retrieval — it exists so a citation can show the
+      // page: its cleaned text, its rendered scan, and whatever the extraction
+      // pulled off it. Vision ingestion produces all three and previously had
+      // nowhere to put the first and last.
+      await q(`
+        CREATE TABLE IF NOT EXISTS "${slug}".pages (
+          source       text NOT NULL,
+          pdf_page     integer NOT NULL,
+          printed_page text,
+          section      text,
+          markdown     text NOT NULL DEFAULT '',
+          image_path   text,
+          extras       jsonb NOT NULL DEFAULT '{}'::jsonb,
+          created_at   timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (source, pdf_page)
+        )`);
+      await q(`CREATE INDEX IF NOT EXISTS pages_section_idx ON "${slug}".pages (section)`);
       await q(`CREATE INDEX IF NOT EXISTS chunks_source_idx ON "${slug}".chunks (source)`);
       await q(`CREATE INDEX IF NOT EXISTS chunks_ordinal_idx ON "${slug}".chunks (ordinal)`);
       // HNSW builds on an empty table; IVFFlat would not.
@@ -374,6 +392,80 @@ export function createPostgresStore(opts = {}) {
         [key],
       );
       return r.rows.map(row => row.v).filter(v => v != null);
+    },
+
+    // ─── Pages ───────────────────────────────────────────────────────────────
+
+    async upsertPages(slug, pages) {
+      await requireSubject(slug);
+      if (!pages.length) return 0;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        for (const p of pages) {
+          await client.query(
+            `INSERT INTO "${slug}".pages
+               (source, pdf_page, printed_page, section, markdown, image_path, extras)
+             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+             ON CONFLICT (source, pdf_page) DO UPDATE SET
+               printed_page = EXCLUDED.printed_page,
+               section      = EXCLUDED.section,
+               markdown     = EXCLUDED.markdown,
+               image_path   = EXCLUDED.image_path,
+               extras       = EXCLUDED.extras`,
+            [p.source, p.pdfPage, p.printedPage ?? null, p.section ?? null,
+             p.markdown ?? '', p.imagePath ?? null, JSON.stringify(p.extras ?? {})],
+          );
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+      return pages.length;
+    },
+
+    /**
+     * One page. `source` is optional because most subjects hold a single paged
+     * document; with several, the caller should name it.
+     */
+    async getPage(slug, pdfPage, source = null) {
+      await requireSubject(slug);
+      const r = await q(
+        `SELECT source, pdf_page, printed_page, section, markdown, image_path, extras
+         FROM "${slug}".pages
+         WHERE pdf_page = $1 ${source ? 'AND source = $2' : ''}
+         ORDER BY source LIMIT 1`,
+        source ? [pdfPage, source] : [pdfPage],
+      );
+      if (r.rowCount === 0) return null;
+      const p = r.rows[0];
+      return {
+        source: p.source,
+        pdfPage: p.pdf_page,
+        printedPage: p.printed_page,
+        section: p.section,
+        markdown: p.markdown,
+        imagePath: p.image_path,
+        specs: p.extras?.specs ?? [],
+        diagrams: p.extras?.diagrams ?? [],
+        extras: p.extras ?? {},
+      };
+    },
+
+    async listSections(slug) {
+      await requireSubject(slug);
+      const r = await q(
+        `SELECT section, min(pdf_page) AS first_page, max(pdf_page) AS last_page, count(*)::int pages
+         FROM "${slug}".pages
+         WHERE section IS NOT NULL AND section <> ''
+         GROUP BY section ORDER BY first_page`,
+      );
+      return r.rows.map(x => ({
+        section: x.section, firstPage: x.first_page, lastPage: x.last_page, pages: x.pages,
+      }));
     },
 
     // ─── Settings ────────────────────────────────────────────────────────────

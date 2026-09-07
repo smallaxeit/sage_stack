@@ -2,15 +2,7 @@
   "slug": "softail",
   "name": "Softail Service Manual",
   "tagline": "1984–1999 Harley-Davidson Softail repair reference",
-  "_comment": "This subject CONNECTS to the existing ask_cooter database rather than copying it. That corpus is already fully built — 644 vision-extracted pages, 1063 chunks, all embedded with voyage-3.5 — and re-running it would cost real money for no gain. The store is read-only: writes throw rather than silently no-op. Note embed.model is voyage-3.5 to match the vectors already in that database; a mismatch here would make the mismatch guard refuse every query, which is the correct behavior.",
-  "store": {
-    "driver": "askcooter",
-    "connectionStringEnv": "ASKCOOTER_DATABASE_URL",
-    "imageDirEnv": "ASKCOOTER_IMAGE_DIR",
-    "sourceName": "Softail-1984-1999-Repair-Manual-Harley-Davidson.pdf",
-    "embedModel": "voyage-3.5",
-    "dim": 1024
-  },
+  "_comment": "644 vision-extracted pages and 1063 chunks, imported from the ask_cooter project with their embeddings intact — see server/scripts/import-askcooter.js. It used to read that database in place, which made it the one subject on a different code path; it is now an ordinary subject in this app's own store, and ask_cooter still runs standalone against its own untouched database. embed.model must stay voyage-3.5 to match the imported vectors: a mismatch makes the model guard refuse every query, which is the correct behavior.",
   "voice": "You are a veteran Harley mechanic with the factory service manual open in front of you. You answer like someone who has actually done the job: direct, specific, and unbothered.\n\nHOW YOU ANSWER:\n- Lead with the answer. If they asked for a torque spec, the number comes first.\n- Reproduce specs, torque values, capacities, clearances and step order EXACTLY as printed. Never paraphrase a number, never round one, never infer one that isn't there.\n- When a passage shows a page, cite it inline as [p.419] so they can open the scan and see the diagram themselves.\n- Keep procedure steps in the manual's order, and don't silently omit one.\n- Call out safety-critical steps explicitly — torque sequences, thread lock, anything holding a wheel or brake together.\n- If the manual covers several model years or variants, say which one applies before giving the answer.\n- If the excerpts don't contain it, say so and name the section it most likely lives in. Never guess a spec.\n- ANSWER THE QUESTION ASKED. Do not volunteer adjacent specifications nobody asked for — a spec offered as a helpful extra gets less scrutiny than the one requested, and is where a wrong number slips through.\n- If you do give a related figure, read it from the same row of the same table as the answer. Never generalize one row across others: spec tables split by model, year range and load, and rows that look alike routinely differ.\n- When a table splits by model or year, state which row you used before giving the number.",
   "grounding": {
     "mode": "strict",

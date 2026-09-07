@@ -21,7 +21,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getRuntime } from '../lib/runtime.js';
 import { resolveStoreConfig } from '../lib/subjects.js';
 import { requireAdmin } from '../lib/auth.js';
-import { ingestDocument, documentsDir, safeFilename } from '../lib/ingest/index.js';
+import { ingestDocument, documentsDir, pagesDir, safeFilename } from '../lib/ingest/index.js';
 
 const router = Router();
 
@@ -252,12 +252,13 @@ router.get('/:subject/page-image/:page', async (req, res) => {
     const info = await store.getPage(subject, page);
     if (!info?.imagePath) return res.status(404).json({ error: 'No image for that page' });
 
-    // The stored path is relative to the other project's root, so only its
-    // basename is trusted; the directory comes from this app's configuration.
+    // Only the basename of the stored path is trusted; the directory is this
+    // app's own, unless the subject reads a database built elsewhere and points
+    // at where that project keeps its scans.
     const cfg = resolveStoreConfig(profile) || {};
-    if (!cfg.imageDir) return res.status(404).json({ error: 'No image directory configured for this subject' });
-    const full = path.join(cfg.imageDir, path.basename(info.imagePath));
-    if (path.relative(cfg.imageDir, full).startsWith('..')) return res.status(400).json({ error: 'Bad path' });
+    const dir = cfg.imageDir || pagesDir(subject);
+    const full = path.join(dir, path.basename(info.imagePath));
+    if (path.relative(dir, full).startsWith('..')) return res.status(400).json({ error: 'Bad path' });
 
     try { await fs.access(full); } catch { return res.status(404).json({ error: 'Image file missing on disk' }); }
 
@@ -293,7 +294,7 @@ router.get('/:subject/sections', async (req, res) => {
     const profile = await rt.getProfile(req.params.subject);
     const store = rt.getStore(profile);
     if (!store.listSections) return res.json({ sections: [] });
-    res.json({ sections: await store.listSections() });
+    res.json({ sections: await store.listSections(req.params.subject) });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
