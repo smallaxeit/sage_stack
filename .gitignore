@@ -22,7 +22,12 @@ server/knowledge-base.json
 server/knowledge-cache.json
 server/build-progress.json
 
-# Source PDFs — large binaries, store separately
+# Loose PDFs dropped at the top of source/ for a one-off build.
+#
+# Deliberately NOT recursive: source/library/ is a curated reading list that is
+# meant to be committed, PDFs included. A `*` does not cross a `/`, so this
+# rule stops at the top level, which is the intent — do not "fix" it into
+# source/**/*.pdf without moving the library somewhere else first.
 source/*.pdf
 
 # Rescued/derived knowledge data — large binaries, regenerable, may be

@@ -371,7 +371,9 @@ routine test run can never write into a working database.
 - `server/.env` is gitignored. `server/.env.example` documents every variable.
 - `data/` is gitignored — regenerable, large, and often derived from copyrighted
   sources.
-- Source PDFs are not committed.
+- `source/library/` **is** committed — it is a curated reading list of
+  public-domain texts, and the point is that it travels with the repo. What is
+  not committed is anything uploaded at runtime: those land in `data/`.
 - **Vectors from different embedding models are not interchangeable**, and a
   mismatch does not error — it silently returns confident nonsense. Every
   subject records the model that built it, and a query with the wrong one is
