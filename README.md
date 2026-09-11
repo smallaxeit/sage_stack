@@ -43,7 +43,7 @@ and the pipeline is the same for all three:
 |---|---|---|---|
 | `theology` | Religious and philosophical texts | An electrifying comparative-theology teacher — Keating from *Dead Poets Society* with a scholar's command of the sources | Postgres / Supabase |
 | `softail` | A scanned Harley service manual | A veteran mechanic with the factory manual open — direct, specific, unbothered | Postgres |
-| `rx` | Prescription drug labeling | A reference desk — reproduces what the labeling states, exactly as printed | Postgres |
+| `rx` | Prescription drug labeling, read across everything you take | A reference desk — reproduces what the labeling states, exactly as printed | Postgres |
 
 **Grounding is per subject, because the cost of being wrong is not.** Each
 subject picks how strictly it must stay on the page, and the strict ones are
@@ -53,12 +53,44 @@ than the one asked for. The drug reference never converts a unit or rounds a
 figure. The teacher is free to roam, because a flourish about Aquinas does not
 cost what a wrong clearance costs.
 
-The three also break different things, which is why all three ship. `theology`
+### What a subject can be worth: `rx`
+
+A package insert is written as though its drug were the only one you take. Load
+five of them, tell the app which you are actually on, and the question changes
+from *what does this label say* to **what do these say together** — which is
+the question you actually have, and the one no single document answers.
+
+Retrieval guarantees every drug on your list a passage, so "what are the side
+effects" is answered across all of them rather than from whichever insert
+happened to rank highest. That alone was worth building: before the guarantee,
+two rosuvastatin inserts crowded out all 34 amlodipine passages and the answer
+reported amlodipine as not covered.
+
+The more useful result is a connection neither document states on its own:
+
+> Spironolactone's labeling warns that **angiotensin receptor blockers** raise
+> serum potassium, and says to check it within a week of starting or changing a
+> dose [p.6]. Losartan — which *is* an angiotensin receptor blocker — tells the
+> patient not to use potassium supplements or salt substitutes without asking a
+> provider [p.19].
+
+Neither insert names the other drug. The link exists only because both are
+loaded, the drug class was extracted from each chunk at ingest, and retrieval
+was made to cover the whole list. Read one PDF at a time, you would have to
+already know losartan's class to spot it.
+
+**It does not interpret, and it does not advise.** It reproduces what the
+labeling says, exactly as printed, with the page to open and check. The point
+is to walk into the appointment with a specific question and a citation, rather
+than a vague worry — the doctor decides, better informed.
+
+### Why three subjects
+
+They break different things, which is why all three ship. `theology`
 is plain text with no page numbers, and it proved that asking for page
 citations when none exist makes a model invent them. `softail` is a scan with
-no extractable text at all — the reason vision ingestion exists. `rx` is the
-one where the reader's own context matters, so it drives the preference list
-and the per-item retrieval floor.
+no extractable text at all — the reason vision ingestion exists. And `rx`, as
+above, is the one where the reader's own context is part of the question.
 
 ---
 
