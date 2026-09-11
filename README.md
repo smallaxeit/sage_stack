@@ -5,50 +5,60 @@
 SageStack turns a pile of documents into something you can ask questions of —
 and every answer cites the page you can open to verify it.
 
-**Where it stores things and where it runs are both your choice**, and they are
-independent of each other. Storage is either files on disk or Postgres —
-wherever that Postgres happens to be. Deployment is an Express app in a
-container: a laptop, a VPS, or any platform that runs Node. Nothing in the
-design assumes local, and nothing assumes hosted.
+**Any domain, the same engine.** Scripture, a scanned Harley manual and drug
+labeling all run through one pipeline with no special cases in the code. What
+makes a knowledge area is a directory and a JSON file: the voice, the chunking,
+the fields extracted from each chunk, how strictly the answer must stay on the
+page. Adding the fourth area is config, not a release.
+
+**It scales down as readily as up.** Clone it and it runs on files on disk with
+no database at all; point it at Postgres — local, RDS, Neon, Railway, Supabase
+— and the same code serves many subjects, each isolated in its own schema.
+Deployment is an Express app in a container: a laptop, a VPS, anything that
+runs Node. Nothing in the design assumes local, and nothing assumes hosted.
 
 ---
 
 ## What it is
 
-A **knowledge area** (a "subject") is a directory with a `subject.json`. That
-file holds everything domain-specific: the voice the assistant answers in, how
-documents are chunked, which embedding model to use, and what metadata to pull
-out of each chunk. Adding a new area — medicine, service manuals, case law,
-whatever you have PDFs for — touches no code.
+A **knowledge area** (a "subject") is a directory with a `subject.json`, and
+that file holds everything domain-specific: the voice, the chunk sizes, the
+embedding model, the fields to pull out of each chunk, how strictly the answer
+must stay on the page.
 
 Subjects are **isolated from each other**. A directory per subject on disk, a
 Postgres schema per subject in a database. There is no query that returns two
 subjects' rows without naming both, which makes the separation structural
 rather than a `WHERE` clause someone has to remember.
 
-Three areas ship as working examples, and they are deliberately unalike — a
-pipeline that serves all three is not overfitted to any one of them:
+**One thing never varies: the answer comes from the loaded documents, and it
+says where.** No subject is allowed to answer from what the model already
+knows. Everything else — the voice, how documents are chunked, what gets
+extracted from each chunk, how retrieval ranks — is config.
 
-| Subject | What it is | How it answers | Where its data lives |
+That is the whole point. Three areas ship, chosen to be as unalike as possible,
+and the pipeline is the same for all three:
+
+| Subject | What it is | How it reads | Where its data lives |
 |---|---|---|---|
 | `theology` | Religious and philosophical texts | An electrifying comparative-theology teacher — Keating from *Dead Poets Society* with a scholar's command of the sources | Postgres / Supabase |
 | `softail` | A scanned Harley service manual | A veteran mechanic with the factory manual open — direct, specific, unbothered | Postgres |
-| `rx` | Prescription drug labeling | A pharmacology reference — precise, no padding, the dose first | Postgres |
+| `rx` | Prescription drug labeling | A reference desk — reproduces what the labeling states, exactly as printed | Postgres |
 
-**The voice is config, not code.** Each of those is a `voice` string in
-`subject.json`, and it changes more than tone: the mechanic is told never to
-volunteer an unrequested torque spec, because a number offered as a helpful
-extra gets less scrutiny than the one asked for. The pharmacology reference is
-told to reproduce every dose exactly as printed and never convert units. The
-teacher is free to roam, because the cost of a flourish about Aquinas is not
-the cost of a wrong clearance.
+**Grounding is per subject, because the cost of being wrong is not.** Each
+subject picks how strictly it must stay on the page, and the strict ones are
+told what kind of mistake to fear: the mechanic never volunteers an
+unrequested spec, since a number offered as a helpful extra gets less scrutiny
+than the one asked for. The drug reference never converts a unit or rounds a
+figure. The teacher is free to roam, because a flourish about Aquinas does not
+cost what a wrong clearance costs.
 
-They also break different things, which is why all three ship. `theology` is
-plain text with no page numbers, and it proved that asking for page citations
-when none exist makes a model invent them. `softail` is a scan with no
-extractable text at all — the reason vision ingestion exists. `rx` is the one
-where the reader's own context matters, so it drives the preference list and
-the per-item retrieval floor.
+The three also break different things, which is why all three ship. `theology`
+is plain text with no page numbers, and it proved that asking for page
+citations when none exist makes a model invent them. `softail` is a scan with
+no extractable text at all — the reason vision ingestion exists. `rx` is the
+one where the reader's own context matters, so it drives the preference list
+and the per-item retrieval floor.
 
 ---
 
