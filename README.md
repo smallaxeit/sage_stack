@@ -55,12 +55,17 @@ cost what a wrong clearance costs.
 
 ### What a subject can be worth: `rx`
 
-Nobody reads the insert. It is a fold-out sheet of tiny type, stapled to a bag,
-written as though its drug were the only thing you take.
+**Nobody has the whole picture of what you take.** A cardiologist added one, a
+GP added another, a specialist added a third. The pharmacy filled them in
+separate bags, each with a fold-out sheet of tiny type stapled to it, each
+written as though its drug were the only thing you take. You are the one person
+holding the complete list — and you were handed the least readable version of
+it.
 
-**Load one, or load everything you are on.** Say which ones you currently take
-and every answer reads your whole list — not whichever document best matched
-your wording. Ask what the side effects are and you get *yours*.
+**This reads all of it, together, every time you ask.** Load what you take, say
+which ones are current, and an answer draws on your whole list rather than
+whichever document best matched your wording. Ask what the side effects are and
+you get *yours* — not a drug's.
 
 **And what you are on is never a setup step you did once.** Your list sits
 above the conversation as chips, in view while you read the answer, because it
@@ -81,16 +86,19 @@ Then it finds what sits *between* your medications:
 > not to use potassium supplements or salt substitutes without asking a
 > provider [p.19].
 
-**Neither insert names the other drug.** That surfaces only because both are
-loaded, the drug class was pulled out of every passage at ingest, and retrieval
-is forced to cover your whole list. Reading one sheet at a time, you would have
-to already know what class losartan belongs to — which is the thing you opened
-the label to find out.
+**Neither insert names the other drug.** That connection exists only because
+both are loaded, the drug class was pulled out of every passage at ingest, and
+retrieval is forced to cover your whole list. Reading one sheet at a time you
+would have to already know what class losartan belongs to — which is the thing
+you opened the label to find out.
 
-And you can prove it. Every claim carries a page that opens to the real page,
-so you arrive at the appointment with a citation rather than something you
-half-remember. It does not diagnose and it does not tell you what to take. It
-makes sure you know what to ask.
+**And every word of it is checkable.** Each claim carries a page that opens to
+the real page, so nothing rests on trusting the answer. That is the difference
+between this and searching your symptoms: you are reading your own labeling,
+complete, in one place, with the source one click away.
+
+Which is what being fully informed about your own medications actually means —
+and it is the first time anyone has put them all in front of you at once.
 
 ### Why three subjects
 
