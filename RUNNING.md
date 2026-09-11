@@ -85,6 +85,7 @@ At boot the server prints each subject's state:
 
 ```
 Store: postgres
+  ok   rx            173 chunks,  173 embedded (voyage-3.5, 1024d)
   ok   softail      1063 chunks, 1063 embedded (voyage-3.5, 1024d)
   ok   theology     4997 chunks, 4997 embedded (voyage-3, 1024d)
 ```
@@ -135,8 +136,9 @@ scan — the page has to be looked at.
 ## Adding a knowledge area
 
 Create `subjects/<slug>/subject.json`. Only `voice` is required; everything
-else has a default. See `subjects/theology/` and `subjects/softail/` for a
-worked example of each shape.
+else has a default. Three worked examples ship, one per shape: plain text with
+no pages (`subjects/theology/`), a scan read by vision (`subjects/softail/`),
+and one driven by a reader's own list (`subjects/rx/`).
 
 The slug becomes a directory name and a SQL identifier, so it must be
 lowercase, start with a letter, and contain only letters, digits and
@@ -147,9 +149,9 @@ does need a restart, since profiles are cached.
 
 ---
 
-## Connecting to a database built elsewhere
+## Reading an ask_cooter database in place
 
-A subject can read from a database it does not own:
+A subject can read an ask_cooter database directly, instead of importing it:
 
 ```jsonc
 "store": {
@@ -170,8 +172,9 @@ nothing, and the UI hides the upload box.
 
 ### Importing instead
 
-Reading in place keeps one subject on a different code path and tied to another
-project's disk layout. Where the data can be copied, copy it:
+Reading in place keeps one subject on a different code path and pointed at a
+second database. Prefer it only when that database has to stay live — ask_cooter
+still runs standalone against its own. Otherwise import:
 
 ```bash
 node server/scripts/import-askcooter.js --subject softail --dry-run

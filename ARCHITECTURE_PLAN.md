@@ -347,7 +347,7 @@ Also shipped beyond the plan:
   answer for multi-tenancy, since a tenant can own its whole database rather
   than a schema in a shared one.
 - **[store/askcooter.js](server/lib/store/askcooter.js)** — read-only adapter
-  translating a foreign schema into the canonical chunk. Every write throws.
+  mapping ask_cooter's pages/chunks layout onto the canonical chunk. Every write throws.
   `softail` was built on it and has since been imported into SageStack's own
   database (see below), so the adapter is now a capability rather than
   something a shipped subject depends on.

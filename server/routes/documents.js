@@ -172,7 +172,7 @@ router.post('/:subject/upload', requireAdmin, upload.single('file'), async (req,
     const store = rt.getStore(profile);
     if (store.readOnly) {
       throw new Error(
-        `Subject "${subject}" reads a database built elsewhere, so it cannot accept uploads. ` +
+        `Subject "${subject}" is read-only, so it cannot accept uploads. ` +
         `Create a SageStack-owned subject to ingest new documents.`,
       );
     }
@@ -253,7 +253,7 @@ router.get('/:subject/page-image/:page', async (req, res) => {
     if (!info?.imagePath) return res.status(404).json({ error: 'No image for that page' });
 
     // Only the basename of the stored path is trusted; the directory is this
-    // app's own, unless the subject reads a database built elsewhere and points
+    // app's own, unless the subject reads another database in place and points
     // at where that project keeps its scans.
     const cfg = resolveStoreConfig(profile) || {};
     const dir = cfg.imageDir || pagesDir(subject);

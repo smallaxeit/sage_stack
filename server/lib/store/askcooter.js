@@ -25,7 +25,7 @@
  *   - one PDF per database, and its filename is not stored, so the subject
  *     profile supplies `sourceName`.
  *
- * EVERY WRITE THROWS. This is someone else's working database; the failure mode
+ * EVERY WRITE THROWS. ask_cooter still runs against this database; the failure mode
  * for a silent no-op write is a subject that looks like it accepted an upload
  * and did not.
  */

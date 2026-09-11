@@ -24,7 +24,7 @@ import { createTeacher } from './claude.js';
 
 export function createRuntime(opts = {}) {
   // The default store backs any subject without its own `store` block, and
-  // always backs sessions -- a subject may point at someone else's database
+  // always backs sessions -- a subject may point at a different database
   // (see store/askcooter.js), and chat history must never be written there.
   const store     = opts.store || createStore(opts.storeOptions);
   const profiles  = new Map();

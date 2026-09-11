@@ -26,12 +26,21 @@ Postgres schema per subject in a database. There is no query that returns two
 subjects' rows without naming both, which makes the separation structural
 rather than a `WHERE` clause someone has to remember.
 
-Two areas ship as working examples:
+Three areas ship as working examples, and they are deliberately unalike — a
+pipeline that serves all three is not overfitted to any one of them:
 
 | Subject | What it is | Where its data lives |
 |---|---|---|
 | `theology` | 12 religious and philosophical texts, 4,997 chunks | Postgres / Supabase |
 | `softail` | A scanned Harley service manual, 1,063 chunks over 644 pages | Postgres |
+| `rx` | 5 prescription drug labeling documents, 173 chunks | Postgres |
+
+Each one broke something the others did not. `theology` is plain text with no
+page numbers, so it proved that asking for page citations when none exist makes
+a model invent them. `softail` is a scan with no extractable text at all, which
+is what vision ingestion exists for. `rx` is the one where the reader's own
+context matters — the drugs they currently take — so it drives the preference
+list and the per-item retrieval floor.
 
 ---
 
@@ -158,12 +167,12 @@ There are two backends: files, and Postgres.
 |---|---|---|
 | `files` | Files on disk — JSON plus a binary vector sidecar | default; no database, clone and run |
 | `postgres` | Postgres + pgvector | anywhere it runs — local, RDS, Neon, Railway, Supabase |
-| `askcooter` | Postgres + pgvector, read-only | documents already loaded into a different schema |
+| `askcooter` | Postgres + pgvector, read-only | reading an ask_cooter database in place |
 
-`askcooter` is not a third technology. It is the same Postgres, reading a
-schema this app did not create, so documents that are already loaded can be
-used where they are instead of copied. It refuses writes rather than dropping
-them silently.
+All three rows are one of two technologies. `askcooter` is Postgres with a
+different table layout — ask_cooter's `pages`/`chunks` schema instead of
+SageStack's schema-per-subject — so it maps that shape onto the canonical chunk
+on the way out and refuses writes rather than dropping them silently.
 
 **Supabase is just Postgres.** Point the `postgres` driver at the connection
 string from Supabase's dashboard (Project Settings → Database) and enable
@@ -183,16 +192,17 @@ pooler does not support the prepared statements the driver relies on.
 > ordinary Postgres, but treat the first run as a verification.
 
 A subject can also carry its **own** `store` block, so different knowledge
-areas can live in different databases — one in the app's own, another in a
-database built by something else. That is also the cleanest answer for
-multi-tenancy: a tenant can own its whole database rather than a schema in
-a shared one. See `RUNNING.md`.
+areas can live in different databases rather than sharing one. That is the
+cleanest answer for multi-tenancy: a tenant owns its whole database instead of
+a schema inside a shared one. See `RUNNING.md`.
 
-Reading a database in place is the exception, not the default. It leaves one
-subject on its own code path and tied to another project's disk layout, so it
-suits a database you genuinely cannot copy. Where you can copy, copy —
-`server/scripts/import-askcooter.js` does it for ask_cooter, embeddings and
-page scans included, without modifying the source.
+Prefer importing over reading in place. Reading in place keeps a subject on its
+own code path and tied to another database's layout, so it earns its keep only
+when that database must stay live — ask_cooter still runs standalone against
+its own, which is why the driver exists. Otherwise import:
+`server/scripts/import-askcooter.js` copies chunks, embeddings and page scans
+without modifying the source. `softail` came across that way and is now an
+ordinary Postgres subject.
 
 ---
 
