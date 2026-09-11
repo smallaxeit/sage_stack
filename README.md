@@ -43,7 +43,7 @@ and the pipeline is the same for all three:
 |---|---|---|---|
 | `theology` | Religious and philosophical texts | An electrifying comparative-theology teacher — Keating from *Dead Poets Society* with a scholar's command of the sources | Postgres / Supabase |
 | `softail` | A scanned Harley service manual | A veteran mechanic with the factory manual open — direct, specific, unbothered | Postgres |
-| `rx` | Prescription drug labeling, read across everything you take | A reference desk — reproduces what the labeling states, exactly as printed | Postgres |
+| `rx` | Prescription drug labeling, read across everything you take | A pharmacist who has read every insert you take, and holds them all at once | Postgres |
 
 **Grounding is per subject, because the cost of being wrong is not.** Each
 subject picks how strictly it must stay on the page, and the strict ones are
@@ -55,34 +55,42 @@ cost what a wrong clearance costs.
 
 ### What a subject can be worth: `rx`
 
-A package insert is written as though its drug were the only one you take. Load
-five of them, tell the app which you are actually on, and the question changes
-from *what does this label say* to **what do these say together** — which is
-the question you actually have, and the one no single document answers.
+Nobody reads the insert. It is a fold-out sheet of tiny type, stapled to a bag,
+written as though its drug were the only thing you take.
 
-Retrieval guarantees every drug on your list a passage, so "what are the side
-effects" is answered across all of them rather than from whichever insert
-happened to rank highest. That alone was worth building: before the guarantee,
-two rosuvastatin inserts crowded out all 34 amlodipine passages and the answer
-reported amlodipine as not covered.
+**Load one, or load everything you are on.** Say which ones you currently take
+and every answer reads your whole list — not whichever document best matched
+your wording. Ask what the side effects are and you get *yours*.
 
-The more useful result is a connection neither document states on its own:
+**And what you are on is never a setup step you did once.** Your list sits
+above the conversation as chips, in view while you read the answer, because it
+decides what the answer means. Started something new — add it. Stopped
+something — click the ×. The next question reflects it immediately: nothing
+re-uploaded, nothing rebuilt, no settings screen.
+
+A drug you stop does not vanish. Its labeling stays loaded and askable — it
+just stops counting as yours, so you can still ask what it was doing or what
+changed when you came off it. And the picker only offers drugs your documents
+actually cover, so you can never select something with nothing behind it.
+
+Then it finds what sits *between* your medications:
 
 > Spironolactone's labeling warns that **angiotensin receptor blockers** raise
 > serum potassium, and says to check it within a week of starting or changing a
-> dose [p.6]. Losartan — which *is* an angiotensin receptor blocker — tells the
-> patient not to use potassium supplements or salt substitutes without asking a
+> dose [p.6]. Losartan — which *is* an angiotensin receptor blocker — tells you
+> not to use potassium supplements or salt substitutes without asking a
 > provider [p.19].
 
-Neither insert names the other drug. The link exists only because both are
-loaded, the drug class was extracted from each chunk at ingest, and retrieval
-was made to cover the whole list. Read one PDF at a time, you would have to
-already know losartan's class to spot it.
+**Neither insert names the other drug.** That surfaces only because both are
+loaded, the drug class was pulled out of every passage at ingest, and retrieval
+is forced to cover your whole list. Reading one sheet at a time, you would have
+to already know what class losartan belongs to — which is the thing you opened
+the label to find out.
 
-**It does not interpret, and it does not advise.** It reproduces what the
-labeling says, exactly as printed, with the page to open and check. The point
-is to walk into the appointment with a specific question and a citation, rather
-than a vague worry — the doctor decides, better informed.
+And you can prove it. Every claim carries a page that opens to the real page,
+so you arrive at the appointment with a citation rather than something you
+half-remember. It does not diagnose and it does not tell you what to take. It
+makes sure you know what to ask.
 
 ### Why three subjects
 
@@ -164,11 +172,10 @@ than truncating, because silently dropping the tail is the failure this avoids.
 nominate things the reader currently cares about — for Rx, the drugs they are
 taking — via `retrieval.filterKey`. Matching passages are boosted, never
 required, so "is it safe to add ibuprofen?" still works. But a boost alone let
-the drug with the most pages take every slot: four drugs on the list, and the
-two rosuvastatin inserts crowded out all 24 amlodipine passages, so the answer
-called amlodipine undocumented. So each listed item is also guaranteed its
-best-scoring passage, and anything missing from the pool entirely gets its own
-search.
+the drug with the most pages take every slot — a longer insert crowded out
+another drug's passages entirely, and the answer called that drug
+undocumented. So each listed item is also guaranteed its best-scoring passage,
+and anything missing from the pool entirely gets its own search.
 
 ---
 
