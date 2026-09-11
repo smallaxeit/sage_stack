@@ -43,7 +43,7 @@ and the pipeline is the same for all three:
 |---|---|---|---|
 | `theology` | Religious and philosophical texts | An electrifying comparative-theology teacher — Keating from *Dead Poets Society* with a scholar's command of the sources | Postgres / Supabase |
 | `softail` | A scanned Harley service manual | A veteran mechanic with the factory manual open — direct, specific, unbothered | Postgres |
-| `rx` | Prescription drug labeling, read across everything you take | A pharmacist who has read every insert you take, and holds them all at once | Postgres |
+| `rx` | Drug documentation of any kind, read across everything you take | A pharmacist who has read all of it, and holds your whole list at once | Postgres |
 
 **Grounding is per subject, because the cost of being wrong is not.** Each
 subject picks how strictly it must stay on the page, and the strict ones are
@@ -56,16 +56,23 @@ cost what a wrong clearance costs.
 ### What a subject can be worth: `rx`
 
 **Nobody has the whole picture of what you take.** A cardiologist added one, a
-GP added another, a specialist added a third. The pharmacy filled them in
-separate bags, each with a fold-out sheet of tiny type stapled to it, each
-written as though its drug were the only thing you take. You are the one person
-holding the complete list — and you were handed the least readable version of
-it.
+GP added another, a specialist added a third. They were filled in separate
+bags, documented separately, and every document was written as though its drug
+were the only thing you take. You are the one person holding the complete list
+— and you were handed the least readable version of it.
 
 **This reads all of it, together, every time you ask.** Load what you take, say
 which ones are current, and an answer draws on your whole list rather than
 whichever document best matched your wording. Ask what the side effects are and
 you get *yours* — not a drug's.
+
+**Feed it anything written about a drug.** Package inserts, prescribing
+information, formularies, interaction tables, monographs, the leaflet from the
+pharmacy. The shape does not matter, because "the drugs I take" is not a
+document filter: every passage is tagged at ingest with the drugs it actually
+names. A formulary covering hundreds of drugs contributes exactly the passages
+that mention yours, and sits alongside a single-drug sheet as though they were
+written to go together.
 
 **And what you are on is never a setup step you did once.** Your list sits
 above the conversation as chips, in view while you read the answer, because it
@@ -73,29 +80,31 @@ decides what the answer means. Started something new — add it. Stopped
 something — click the ×. The next question reflects it immediately: nothing
 re-uploaded, nothing rebuilt, no settings screen.
 
-A drug you stop does not vanish. Its labeling stays loaded and askable — it
+A drug you stop does not vanish. Its documentation stays loaded and askable — it
 just stops counting as yours, so you can still ask what it was doing or what
 changed when you came off it. And the picker only offers drugs your documents
 actually cover, so you can never select something with nothing behind it.
 
-Then it finds what sits *between* your medications:
+Then it finds what sits *between* your medications. A real one, from documents
+loaded during development:
 
-> Spironolactone's labeling warns that **angiotensin receptor blockers** raise
-> serum potassium, and says to check it within a week of starting or changing a
-> dose [p.6]. Losartan — which *is* an angiotensin receptor blocker — tells you
-> not to use potassium supplements or salt substitutes without asking a
-> provider [p.19].
+> One drug's documentation warns that an entire **class** of drugs raises a
+> particular lab value, and says to recheck that value within a week of any
+> dose change [p.6]. A second drug on the list belongs to that class — and its
+> own documentation says only to avoid a common supplement without asking a
+> provider first [p.19].
 
-**Neither insert names the other drug.** That connection exists only because
+**Neither document names the other drug.** The connection exists only because
 both are loaded, the drug class was pulled out of every passage at ingest, and
-retrieval is forced to cover your whole list. Reading one sheet at a time you
-would have to already know what class losartan belongs to — which is the thing
-you opened the label to find out.
+retrieval is forced to cover your whole list. Reading one document at a time
+you would have to already know which class the second drug belonged to — which
+is the thing you opened the documentation to find out.
 
 **And every word of it is checkable.** Each claim carries a page that opens to
 the real page, so nothing rests on trusting the answer. That is the difference
-between this and searching your symptoms: you are reading your own labeling,
-complete, in one place, with the source one click away.
+between this and searching your symptoms: you are reading the actual
+documentation for your actual medications, complete, in one place, with the
+source one click away.
 
 Which is what being fully informed about your own medications actually means —
 and it is the first time anyone has put them all in front of you at once.
@@ -179,8 +188,8 @@ than truncating, because silently dropping the tail is the failure this avoids.
 **Where ranking is still used, a preference list gets a floor.** A subject can
 nominate things the reader currently cares about — for Rx, the drugs they are
 taking — via `retrieval.filterKey`. Matching passages are boosted, never
-required, so "is it safe to add ibuprofen?" still works. But a boost alone let
-the drug with the most pages take every slot — a longer insert crowded out
+required, so "is it safe to add something new?" still works. But a boost alone let
+the drug with the most pages take every slot — a longer document crowded out
 another drug's passages entirely, and the answer called that drug
 undocumented. So each listed item is also guaranteed its best-scoring passage,
 and anything missing from the pool entirely gets its own search.

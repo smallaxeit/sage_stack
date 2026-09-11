@@ -16,18 +16,20 @@
     "enabled": true,
     "label": "THEOLOGICAL KNOWLEDGE MAP"
   },
+  "_chunkNote": "These chunks were built by the original Supabase pipeline and imported as-is: median 2794 characters, p95 7304, largest 7960. The 1400/2200 declared here was never what this collection actually contains — 78% of it exceeded the cap — and re-chunking means re-analyzing and re-embedding roughly 5,000 chunks, which is not worth it for a collection that answers well. So the numbers now describe the data instead of contradicting it. Anything ingested into theology from here on matches what is already here rather than arriving at half the size.",
   "ingest": {
     "mode": "text",
-    "chunkTarget": 1400,
-    "chunkMax": 2200
+    "chunkTarget": 5000,
+    "chunkMax": 8000
   },
   "embed": {
     "driver": "voyage",
     "model": "voyage-3",
     "dim": 1024
   },
+  "_topKNote": "6, not 10. topK counts passages, not words, and these passages are large — ten of them is roughly 16,000 tokens of reading before the model writes anything, which is most of the wait on a basic question. Six covers the same ground at ~9,000. Raise it only if answers start missing material.",
   "retrieval": {
-    "topK": 10
+    "topK": 6
   },
   "sourceAliases": {
     "EthiopianOrthodoxBible.pdf": "Ethiopian Orthodox Bible",
