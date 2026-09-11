@@ -29,18 +29,26 @@ rather than a `WHERE` clause someone has to remember.
 Three areas ship as working examples, and they are deliberately unalike — a
 pipeline that serves all three is not overfitted to any one of them:
 
-| Subject | What it is | Where its data lives |
-|---|---|---|
-| `theology` | 12 religious and philosophical texts, 4,997 chunks | Postgres / Supabase |
-| `softail` | A scanned Harley service manual, 1,063 chunks over 644 pages | Postgres |
-| `rx` | 5 prescription drug labeling documents, 173 chunks | Postgres |
+| Subject | What it is | How it answers | Where its data lives |
+|---|---|---|---|
+| `theology` | Religious and philosophical texts | An electrifying comparative-theology teacher — Keating from *Dead Poets Society* with a scholar's command of the sources | Postgres / Supabase |
+| `softail` | A scanned Harley service manual | A veteran mechanic with the factory manual open — direct, specific, unbothered | Postgres |
+| `rx` | Prescription drug labeling | A pharmacology reference — precise, no padding, the dose first | Postgres |
 
-Each one broke something the others did not. `theology` is plain text with no
-page numbers, so it proved that asking for page citations when none exist makes
-a model invent them. `softail` is a scan with no extractable text at all, which
-is what vision ingestion exists for. `rx` is the one where the reader's own
-context matters — the drugs they currently take — so it drives the preference
-list and the per-item retrieval floor.
+**The voice is config, not code.** Each of those is a `voice` string in
+`subject.json`, and it changes more than tone: the mechanic is told never to
+volunteer an unrequested torque spec, because a number offered as a helpful
+extra gets less scrutiny than the one asked for. The pharmacology reference is
+told to reproduce every dose exactly as printed and never convert units. The
+teacher is free to roam, because the cost of a flourish about Aquinas is not
+the cost of a wrong clearance.
+
+They also break different things, which is why all three ship. `theology` is
+plain text with no page numbers, and it proved that asking for page citations
+when none exist makes a model invent them. `softail` is a scan with no
+extractable text at all — the reason vision ingestion exists. `rx` is the one
+where the reader's own context matters, so it drives the preference list and
+the per-item retrieval floor.
 
 ---
 
