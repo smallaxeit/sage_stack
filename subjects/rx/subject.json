@@ -29,7 +29,8 @@
   "retrieval": {
     "contextMode": "search",
     "_contextModeNote": "Tried \"all\" (every chunk, every question) to guarantee no drug could be ranked out. It works and it caches, but 121 chunks is 102k tokens here — the answer took 169 seconds to start, which is a worse experience than the bug it was fixing. The chunks are also oversized: 77 of 121 exceed chunkMax, so this set of documents is roughly twice the tokens it should be. Re-chunking is the real fix; until then a deep topK plus the per-drug floor below covers every drug at a quarter of the tokens.",
-    "topK": 30,
+    "_topKNote": "12, not 30. 30 was compensating for oversized chunks and for the crowding bug that coverPerTerm now fixes properly. Measured on the same question: topK 12 covers every loaded document at ~14k tokens, where topK 30 covered the same documents at ~29k. Twice the tokens and twice the wait bought nothing.",
+    "topK": 12,
     "rewriteFollowUps": true,
     "filterKey": "drugs",
     "overfetch": 4,

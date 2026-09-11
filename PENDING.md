@@ -6,25 +6,25 @@ Approved for a future session. Nothing here is in progress.
 
 ## Data that needs a rebuild
 
-- **Rx chunks are oversized and should be re-ingested.** The chunker split only
+- **One Rx document still has pre-fix chunks.** The chunker used to split only
   on blank lines, and PDF extraction routinely emits none — every line ends in
   a single newline — so a whole page arrived as one "paragraph" and bypassed
-  `chunkMax` entirely. 77 of Rx's 121 chunks exceeded the 2200 cap, median 2451,
-  largest 4414.
+  `chunkMax` entirely.
 
-  The chunker is fixed (`splitOversized`), but existing chunks were written by
-  the old one and stay as they are until re-ingested. Re-ingesting the five Rx
-  PDFs costs analysis and embedding on roughly twice as many chunks — a few
-  dollars — and should roughly halve both the tokens per question and the
-  latency. Check theology and softail for the same shape before assuming Rx is
-  the only one affected.
+  `splitOversized` fixed it, and most of Rx has been re-ingested since: those
+  documents now sit comfortably under the cap. One was missed and still carries
+  its original chunks, a quarter of them over the limit and the largest at
+  twice it. Re-uploading that one document is well under a dollar. Query
+  `rx.chunks` grouped by source with `max(length(text))` to identify it.
+
+  Check theology and softail for the same shape — neither has been measured.
 
 - **Re-ingesting a document leaves orphans.** Chunk ids are
   `<filename>::<index>`, so a re-ingest producing fewer chunks leaves the tail
   behind. Delete the document's chunks first. This blocks the item above.
 
 - **Failed chunk analysis cannot be retried.** One Rx chunk failed analysis
-  (`Spironolactone.pdf::16`, the string "Revised: 4/2026" — a footer, so no
+  (the string "Revised: 4/2026" — a page footer, so no
   real loss). There is no backfill that re-runs analysis for chunks missing a
   summary, so the only remedy today is re-ingesting the whole document.
 
