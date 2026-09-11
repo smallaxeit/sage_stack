@@ -276,7 +276,7 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
           {tab === 'actions' && (
             readOnly ? (
               <div className="admin-note">
-                <strong>{current.name}</strong> reads a database built elsewhere and is read-only.
+                <strong>{current.name}</strong> is read-only — it reads another database in place.
                 Nothing here can be rebuilt through SageStack.
               </div>
             ) : (
