@@ -53,77 +53,37 @@ than the one asked for. The drug reference never converts a unit or rounds a
 figure. The teacher is free to roam, because a flourish about Aquinas does not
 cost what a wrong clearance costs.
 
-### What a subject can be worth: `rx`
+### What every subject gets
 
-**Nobody has the whole picture of what you take.** A cardiologist added one, a
-GP added another, a specialist added a third. They were filled in separate
-bags, documented separately, and every document was written as though its drug
-were the only thing you take. You are the one person holding the complete list
-— and you were handed the least readable version of it.
+Add an area and it inherits the whole pipeline. None of this is written per
+domain:
 
-**This reads all of it, together, every time you ask.** Load what you take, say
-which ones are current, and an answer draws on your whole list rather than
-whichever document best matched your wording. Ask what the side effects are and
-you get *yours* — not a drug's.
+- **Answers built only from your documents**, cited to the page, with a viewer
+  that opens it. Nothing comes from the model's own knowledge, so more
+  questions do not mean more chances to be told something invented.
+- **Any document shape.** Text, PDFs, and scans with no extractable text at all
+  — those are detected and read page by page by a vision model. Mixed shapes
+  sit together in one area.
+- **Fields you define, pulled from every passage at ingest.** Whatever a domain
+  needs recorded — parts, dosages, citations, clauses — becomes structured data
+  the interface can filter and group by.
+- **A live context list**, when a domain has one. The reader nominates what
+  currently matters to them and every answer resolves against it, changeable
+  mid-conversation with nothing re-ingested.
+- **Retrieval that covers the list** rather than letting the longest document
+  take every slot, so nothing on it silently goes unanswered.
+- **A cost per answer**, and isolation from every other subject at the schema
+  level.
 
-**Ask as many questions as you want, at any hour, and get answers built only
-from the documentation in front of it.** Not a model's memory of pharmacology,
-not a search result, not a forum post — the pages you loaded. That is the
-opposite of how a chatbot usually behaves: normally every extra question is
-another chance to be told something confidently invented. Here the answer is
-assembled from real passages or it says it does not have one, so asking more is
-simply how you learn more.
+### Scale
 
-**Feed it anything written about a drug.** Package inserts, prescribing
-information, formularies, interaction tables, monographs, the leaflet from the
-pharmacy. The shape does not matter, because "the drugs I take" is not a
-document filter: every passage is tagged at ingest with the drugs it actually
-names. A formulary covering hundreds of drugs contributes exactly the passages
-that mention yours, and sits alongside a single-drug sheet as though they were
-written to go together.
+One area or fifty, on a laptop with no database or on Postgres serving all of
+them. A subject holding a handful of documents and one holding thousands run
+the same code — the difference is a number in a config file, not a rewrite.
 
-**And what you are on is never a setup step you did once.** Your list sits
-above the conversation as chips, in view while you read the answer, because it
-decides what the answer means. Started something new — add it. Stopped
-something — click the ×. The next question reflects it immediately: nothing
-re-uploaded, nothing rebuilt, no settings screen.
-
-A drug you stop does not vanish. Its documentation stays loaded and askable — it
-just stops counting as yours, so you can still ask what it was doing or what
-changed when you came off it. And the picker only offers drugs your documents
-actually cover, so you can never select something with nothing behind it.
-
-Then it finds what sits *between* your medications. A real one, from documents
-loaded during development:
-
-> One drug's documentation warns that an entire **class** of drugs raises a
-> particular lab value, and says to recheck that value within a week of any
-> dose change [p.6]. A second drug on the list belongs to that class — and its
-> own documentation says only to avoid a common supplement without asking a
-> provider first [p.19].
-
-**Neither document names the other drug.** The connection exists only because
-both are loaded, the drug class was pulled out of every passage at ingest, and
-retrieval is forced to cover your whole list. Reading one document at a time
-you would have to already know which class the second drug belonged to — which
-is the thing you opened the documentation to find out.
-
-**And every word of it is checkable.** Each claim carries a page that opens to
-the real page, so nothing rests on trusting the answer. That is the difference
-between this and searching your symptoms: you are reading the actual
-documentation for your actual medications, complete, in one place, with the
-source one click away.
-
-Which is what being fully informed about your own medications actually means —
-and it is the first time anyone has put them all in front of you at once.
-
-### Why three subjects
-
-They break different things, which is why all three ship. `theology`
-is plain text with no page numbers, and it proved that asking for page
-citations when none exist makes a model invent them. `softail` is a scan with
-no extractable text at all — the reason vision ingestion exists. And `rx`, as
-above, is the one where the reader's own context is part of the question.
+Subjects stay segregated as they multiply — a directory each on disk, a schema
+each in Postgres. One deployment can serve unrelated areas, or unrelated
+clients, with no path between them.
 
 ---
 
