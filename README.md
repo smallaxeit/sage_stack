@@ -108,8 +108,9 @@ Anything skipped is reported, not hidden.
 
 PDFs are parsed **page by page**, so every chunk knows which page it came from
 and citations can link to it. Two page numbers are kept: the position in the
-file, and the label printed on the page. They differ wherever there is front
-matter — by 17 pages in one of the sample texts.
+file, and the label printed on the page. Front matter pushes them apart, so a
+citation that says "p.123" has to mean the one the reader will actually see on
+the page rather than the one the file is counting.
 
 **Scanned PDFs take a different route.** Text extraction returns almost
 nothing for a scan and raises no error, so the check is explicit: a document
@@ -203,18 +204,11 @@ interchangeable.
 
 ### Storage options
 
-There are two backends: files, and Postgres.
-
-| `KB_STORE` | Backend | When |
+| Where your data lives | What it is | Set |
 |---|---|---|
-| `files` | Files on disk — JSON plus a binary vector sidecar | default; no database, clone and run |
-| `postgres` | Postgres + pgvector | anywhere it runs — local, RDS, Neon, Railway, Supabase |
-| `askcooter` | Postgres + pgvector, read-only | reading an ask_cooter database in place |
-
-All three rows are one of two technologies. `askcooter` is Postgres with a
-different table layout — ask_cooter's `pages`/`chunks` schema instead of
-SageStack's schema-per-subject — so it maps that shape onto the canonical chunk
-on the way out and refuses writes rather than dropping them silently.
+| **Files** | JSON plus a binary vector sidecar on disk | `KB_STORE=files` |
+| **Postgres** | Postgres + pgvector — local, RDS, Neon, Railway | `KB_STORE=postgres` + `DATABASE_URL` |
+| **Supabase** | Managed Postgres + pgvector | `KB_STORE=postgres` + a Supabase `DATABASE_URL` |
 
 **Supabase is just Postgres.** Point the `postgres` driver at the connection
 string from Supabase's dashboard (Project Settings → Database) and enable
@@ -377,7 +371,7 @@ server/
     rewrite.js                   makes a follow-up question standalone before search
     conceptmap.js                concept map build
     auth.js                      the admin-key gate
-    store/                       files | postgres | askcooter  (+ parity tests)
+    store/                       files | postgres  (+ parity tests)
     embed/                       voyage | local               (+ tests)
     ingest/                      parse → chunk → analyze → embed → store,
                                  plus render + vision for scans
@@ -390,6 +384,7 @@ client/src/
   api.js                         fetch with the admin key attached
   components/
     Chat.jsx                     streaming chat
+    ActiveList.jsx               the reader's current-context chips
     Message.jsx                  markdown + inline [p.N] citation links
     PageViewer.jsx               scan | extracted text, zoom, page flip
     DocumentBrowser.jsx          browse documents and open any page

@@ -348,6 +348,68 @@ export function createFilesStore(opts = {}) {
       return settings;
     },
 
+    // ─── Pages ───────────────────────────────────────────────────────────────
+    // Page text, section and the rendered scan for one page of one document.
+    // Separate from chunks because it is not what retrieval searches — it is
+    // what the viewer shows beside an answer once a citation is clicked.
+    //
+    // This existed only in the postgres driver for a while, so a subject moved
+    // to files lost its page viewer with nothing reporting it. The parity suite
+    // now covers all three methods.
+
+    async getPages(slug) {
+      try { return JSON.parse(await fs.readFile(p(slug, 'pages.json'), 'utf8')); }
+      catch { return []; }
+    },
+
+    async upsertPages(slug, pages) {
+      if (!pages.length) return 0;
+      await fs.mkdir(subjectDir(slug), { recursive: true });
+
+      const existing = await this.getPages(slug);
+      // Keyed the same way postgres keys the table: one row per page per source.
+      const key = (x) => `${x.source}::${x.pdfPage}`;
+      const merged = new Map(existing.map(x => [key(x), x]));
+      for (const page of pages) {
+        merged.set(key(page), {
+          source:      page.source,
+          pdfPage:     page.pdfPage,
+          printedPage: page.printedPage ?? null,
+          section:     page.section ?? null,
+          markdown:    page.markdown ?? '',
+          imagePath:   page.imagePath ?? null,
+          extras:      page.extras ?? {},
+        });
+      }
+
+      const out = [...merged.values()].sort(
+        (a, b) => a.source.localeCompare(b.source) || a.pdfPage - b.pdfPage);
+      await fs.writeFile(p(slug, 'pages.json'), JSON.stringify(out, null, 2));
+      return pages.length;
+    },
+
+    async getPage(slug, pdfPage, source = null) {
+      const pages = await this.getPages(slug);
+      return pages.find(x => x.pdfPage === pdfPage && (!source || x.source === source)) ?? null;
+    },
+
+    async listSections(slug) {
+      const pages = await this.getPages(slug);
+      const bySection = new Map();
+      for (const page of pages) {
+        if (!page.section) continue;
+        const e = bySection.get(page.section)
+          ?? { section: page.section, firstPage: page.pdfPage, lastPage: page.pdfPage, pages: 0 };
+        e.firstPage = Math.min(e.firstPage, page.pdfPage);
+        e.lastPage  = Math.max(e.lastPage, page.pdfPage);
+        e.pages++;
+        bySection.set(page.section, e);
+      }
+      // Document order, matching postgres, so a table of contents reads the
+      // same whichever driver is behind it.
+      return [...bySection.values()].sort((a, b) => a.firstPage - b.firstPage);
+    },
+
     // ─── Sessions ────────────────────────────────────────────────────────────
     // Session ids come from the client, so they are hashed rather than used as
     // filenames directly — "../../etc" must never become a path.

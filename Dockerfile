@@ -39,6 +39,11 @@ COPY server/ ./server/
 # by .dockerignore; only the profiles are needed at runtime.
 COPY subjects/ ./subjects/
 
+# Which model does which job, and what each costs. lib/models.js reads this at
+# import time and throws if it is missing, so leaving it out does not degrade
+# the container — it stops it booting at all.
+COPY config/ ./config/
+
 # Writable state for the files store, uploaded documents and exports. Mount a
 # volume here to persist it; a Postgres-backed deploy does not need it.
 VOLUME ["/app/data"]
