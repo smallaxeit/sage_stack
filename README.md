@@ -43,7 +43,7 @@ and the pipeline is the same for all three:
 |---|---|---|---|
 | `theology` | Religious and philosophical texts | An electrifying comparative-theology teacher — Keating from *Dead Poets Society* with a scholar's command of the sources | Postgres / Supabase |
 | `softail` | A scanned Harley service manual | A veteran mechanic with the factory manual open — direct, specific, unbothered | Postgres |
-| `rx` | Drug documentation of any kind, read across everything you take | A pharmacist who has read all of it, and holds your whole list at once | Postgres |
+| `rx` | Drug documentation of any kind, read across everything you take | A pharmacist with unlimited time for your questions, who has read every page you loaded, holds your whole list at once, and answers only from what is written there — never from memory, never from the internet, and never a guess | Postgres |
 
 **Grounding is per subject, because the cost of being wrong is not.** Each
 subject picks how strictly it must stay on the page, and the strict ones are
@@ -65,6 +65,14 @@ were the only thing you take. You are the one person holding the complete list
 which ones are current, and an answer draws on your whole list rather than
 whichever document best matched your wording. Ask what the side effects are and
 you get *yours* — not a drug's.
+
+**Ask as many questions as you want, at any hour, and get answers built only
+from the documentation in front of it.** Not a model's memory of pharmacology,
+not a search result, not a forum post — the pages you loaded. That is the
+opposite of how a chatbot usually behaves: normally every extra question is
+another chance to be told something confidently invented. Here the answer is
+assembled from real passages or it says it does not have one, so asking more is
+simply how you learn more.
 
 **Feed it anything written about a drug.** Package inserts, prescribing
 information, formularies, interaction tables, monographs, the leaflet from the
