@@ -33,3 +33,6 @@ source/*.pdf
 # Rescued/derived knowledge data — large binaries, regenerable, may be
 # source-derived. Back these up outside git (see ARCHITECTURE_PLAN.md Phase 0).
 data/
+
+# Local editor state — not part of the project
+.claude/
