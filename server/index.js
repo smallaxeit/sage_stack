@@ -65,6 +65,13 @@ async function reportSubjects() {
 async function init() {
   await reportSubjects();
 
+  // An unmatched /api path is a mistake, not a page. Without this it fell
+  // through to the SPA below and answered 200 with HTML, so a typo in a client
+  // call looked like a success and failed later at JSON.parse.
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: `No such endpoint: ${req.method} /api${req.path}` });
+  });
+
   // Serve the built React app for all non-API requests
   app.use(express.static(path.join(__dirname, '../client/dist')));
   app.get('*', (req, res) => {

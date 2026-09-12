@@ -149,9 +149,10 @@ does need a restart, since profiles are cached.
 
 ---
 
-## Reading an ask_cooter database in place
+## Pointing a subject at its own database
 
-A subject can read an ask_cooter database directly, instead of importing it:
+A subject can carry its own `store` block and use a different Postgres than the
+app-wide one:
 
 ```jsonc
 "store": {
@@ -167,8 +168,8 @@ A subject can read an ask_cooter database directly, instead of importing it:
 Any key ending in `Env` names an environment variable holding the real value,
 so connection strings stay out of a committed file.
 
-Such a store is **read-only** — writes throw rather than silently doing
-nothing, and the UI hides the upload box.
+`askcooter` here names the table layout to read, not a different kind of
+storage — it is Postgres either way.
 
 ### Importing instead
 

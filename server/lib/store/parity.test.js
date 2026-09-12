@@ -240,6 +240,69 @@ function runParitySuite(driverName, makeStore, { skip = false } = {}) {
       await store.deleteChunks(slug, ['e1', 'e2', 'e3']);
     });
 
+    test('pages round-trip, and a subject with none answers empty', async () => {
+      // Both halves matter. The empty answer is what broke in production: the
+      // pages table was added after some schemas already existed, so the first
+      // read against one failed with a raw SQL error and the table-of-contents
+      // request the UI makes for every subject returned 400.
+      assert.deepEqual(await store.listSections(slug), [], 'no pages yet');
+      assert.equal(await store.getPage(slug, 0), null, 'no such page yet');
+
+      await store.upsertPages(slug, [
+        { source: 'doc.pdf', pdfPage: 0, printedPage: '1', section: 'INTRO',
+          markdown: '# Intro', imagePath: 'page_0000.png', extras: { specs: [] } },
+        { source: 'doc.pdf', pdfPage: 1, printedPage: '2', section: 'INTRO',
+          markdown: 'more intro', imagePath: null, extras: {} },
+        { source: 'doc.pdf', pdfPage: 2, printedPage: '3', section: 'BODY',
+          markdown: 'the body', imagePath: null, extras: {} },
+      ]);
+
+      const first = await store.getPage(slug, 0);
+      assert.equal(first.markdown, '# Intro');
+      assert.equal(first.printedPage, '1', 'the printed label is what a citation shows');
+      assert.equal(first.imagePath, 'page_0000.png', 'without this the viewer has no scan');
+      assert.equal(first.section, 'INTRO');
+
+      const sections = await store.listSections(slug);
+      assert.deepEqual(sections.map(x => x.section), ['INTRO', 'BODY'], 'document order');
+      assert.equal(sections[0].pages, 2);
+      assert.equal(sections[0].firstPage, 0);
+      assert.equal(sections[1].firstPage, 2);
+
+      // Re-ingesting a page replaces it rather than adding a second row.
+      await store.upsertPages(slug, [
+        { source: 'doc.pdf', pdfPage: 0, printedPage: '1', section: 'INTRO',
+          markdown: 'rewritten', imagePath: null, extras: {} },
+      ]);
+      assert.equal((await store.getPage(slug, 0)).markdown, 'rewritten');
+      assert.equal((await store.listSections(slug))[0].pages, 2, 'still two, not three');
+    });
+
+    test('a dropped and recreated subject still serves pages', async () => {
+      // The postgres driver memoizes which subjects it has ensured a pages
+      // table for, to avoid a round trip per read. Dropping the schema makes
+      // that memo wrong: without clearing it, recreating the same slug skips
+      // the DDL and every page read fails against a table nobody rebuilt.
+      const reused = `paritytest_p_${rnd()}`;
+      await store.initSubject(reused, { dim: DIM });
+      await store.upsertPages(reused, [
+        { source: 'a.pdf', pdfPage: 0, section: 'ONE', markdown: 'first' },
+      ]);
+      assert.equal((await store.listSections(reused)).length, 1);
+
+      await store.dropSubject(reused);
+      await store.initSubject(reused, { dim: DIM });
+      try {
+        assert.deepEqual(await store.listSections(reused), [], 'recreated empty, not broken');
+        await store.upsertPages(reused, [
+          { source: 'a.pdf', pdfPage: 0, section: 'TWO', markdown: 'again' },
+        ]);
+        assert.equal((await store.getPage(reused, 0)).markdown, 'again');
+      } finally {
+        await store.dropSubject(reused);
+      }
+    });
+
     test('settings round-trip and are subject-scoped', async () => {
       // Holds state belonging to a knowledge area rather than a conversation —
       // the Rx subject's "currently taking" list is the first use, and it has

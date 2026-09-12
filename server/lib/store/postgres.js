@@ -134,6 +134,37 @@ export function createPostgresStore(opts = {}) {
     return metaFromRow({ ...r.rows[0], ...counts.rows[0] });
   }
 
+  /**
+   * Ensure a subject's `pages` table exists.
+   *
+   * The table was added after subjects had already been created, and the DDL
+   * only ran in initSubject — so every schema built before it simply had no
+   * pages table, and the first read against one failed with a raw
+   * `relation "<slug>.pages" does not exist`. The table-of-contents request
+   * the UI makes for every subject returned 400 on those.
+   *
+   * Creating it is idempotent and empty, so repairing on first use costs one
+   * round trip per subject per process and needs no migration step.
+   */
+  const pagesReady = new Set();
+  async function ensurePages(slug) {
+    if (pagesReady.has(slug)) return;
+    await q(`
+      CREATE TABLE IF NOT EXISTS "${slug}".pages (
+        source       text NOT NULL,
+        pdf_page     integer NOT NULL,
+        printed_page text,
+        section      text,
+        markdown     text NOT NULL DEFAULT '',
+        image_path   text,
+        extras       jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at   timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (source, pdf_page)
+      )`);
+    await q(`CREATE INDEX IF NOT EXISTS pages_section_idx ON "${slug}".pages (section)`);
+    pagesReady.add(slug);
+  }
+
   return {
     driver: 'postgres',
 
@@ -181,19 +212,7 @@ export function createPostgresStore(opts = {}) {
       // page: its cleaned text, its rendered scan, and whatever the extraction
       // pulled off it. Vision ingestion produces all three and previously had
       // nowhere to put the first and last.
-      await q(`
-        CREATE TABLE IF NOT EXISTS "${slug}".pages (
-          source       text NOT NULL,
-          pdf_page     integer NOT NULL,
-          printed_page text,
-          section      text,
-          markdown     text NOT NULL DEFAULT '',
-          image_path   text,
-          extras       jsonb NOT NULL DEFAULT '{}'::jsonb,
-          created_at   timestamptz NOT NULL DEFAULT now(),
-          PRIMARY KEY (source, pdf_page)
-        )`);
-      await q(`CREATE INDEX IF NOT EXISTS pages_section_idx ON "${slug}".pages (section)`);
+      await ensurePages(slug);
       await q(`CREATE INDEX IF NOT EXISTS chunks_source_idx ON "${slug}".chunks (source)`);
       await q(`CREATE INDEX IF NOT EXISTS chunks_ordinal_idx ON "${slug}".chunks (ordinal)`);
       // HNSW builds on an empty table; IVFFlat would not.
@@ -224,6 +243,10 @@ export function createPostgresStore(opts = {}) {
       assertValidSlug(slug);
       const r = await q(`DELETE FROM public.sagestack_subjects WHERE slug = $1`, [slug]);
       await q(`DROP SCHEMA IF EXISTS "${slug}" CASCADE`);
+      // The schema is gone, so the memo saying its pages table exists is now a
+      // lie. Left set, recreating the same slug would skip the DDL and every
+      // page read would fail against a table that was never rebuilt.
+      pagesReady.delete(slug);
       return r.rowCount > 0;
     },
 
@@ -398,6 +421,7 @@ export function createPostgresStore(opts = {}) {
 
     async upsertPages(slug, pages) {
       await requireSubject(slug);
+      await ensurePages(slug);
       if (!pages.length) return 0;
       const client = await pool.connect();
       try {
@@ -433,6 +457,7 @@ export function createPostgresStore(opts = {}) {
      */
     async getPage(slug, pdfPage, source = null) {
       await requireSubject(slug);
+      await ensurePages(slug);
       const r = await q(
         `SELECT source, pdf_page, printed_page, section, markdown, image_path, extras
          FROM "${slug}".pages
@@ -457,6 +482,7 @@ export function createPostgresStore(opts = {}) {
 
     async listSections(slug) {
       await requireSubject(slug);
+      await ensurePages(slug);
       const r = await q(
         `SELECT section, min(pdf_page) AS first_page, max(pdf_page) AS last_page, count(*)::int pages
          FROM "${slug}".pages

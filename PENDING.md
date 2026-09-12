@@ -17,7 +17,10 @@ Approved for a future session. Nothing here is in progress.
   twice it. Re-uploading that one document is well under a dollar. Query
   `rx.chunks` grouped by source with `max(length(text))` to identify it.
 
-  Check theology and softail for the same shape — neither has been measured.
+  theology and softail have since been measured. softail is clean (0 over cap).
+  theology was 78% over a cap it never matched — its chunks came from the
+  original Supabase pipeline — so its declared sizes were raised to describe
+  the data instead, rather than re-analyzing and re-embedding ~5,000 chunks.
 
 - **Re-ingesting a document leaves orphans.** Chunk ids are
   `<filename>::<index>`, so a re-ingest producing fewer chunks leaves the tail
@@ -70,9 +73,11 @@ Approved for a future session. Nothing here is in progress.
   The inline `[p.N]` links are correct; it is only the panel that is coarse.
 
 - **`contextMode: "all"` is implemented but unused.** It sends every chunk and
-  caches them as a stable prefix. Sound for a genuinely small subject; Rx at
-  121 oversized chunks took 169 seconds to start answering, so it was backed
-  out. Worth revisiting after the re-chunk above.
+  caches them as a stable prefix. Sound for a genuinely small subject; Rx took
+  169 seconds to start answering when it was tried, so it was backed out. Rx is
+  now correctly chunked apart from one document, so it is worth re-measuring —
+  the cached prefix makes it cheaper per question than ranked retrieval, and
+  latency was the only thing that ruled it out.
 
 ---
 
@@ -81,6 +86,10 @@ Approved for a future session. Nothing here is in progress.
 - **No tests for `conceptmap.js`, `runtime.js`, or `auth.js`.** `auth.js` is
   the one that matters: it is the gate on everything that spends or destroys,
   and it is currently asserted only by being called.
+
+- **No test asserts an unmatched `/api` path 404s.** It used to fall through to
+  the SPA and answer 200 with HTML, which a client only notices at JSON.parse.
+  Fixed, but nothing stops it regressing.
 
 - **Vision ingestion has never been run end to end.** Extraction is verified on
   individual pages and the resume logic in isolation, but no full
@@ -92,8 +101,10 @@ Approved for a future session. Nothing here is in progress.
   every committed subject pins `text` or `vision`.
 
 - **The Docker image has never been built.** Docker is not installed on the dev
-  machine. A missing `subjects/` copy was caught by reading the Dockerfile, not
-  by running it. Build it once before relying on it.
+  machine, so two boot-stopping omissions were caught by reading the Dockerfile
+  rather than by running it: `subjects/` and later `config/`, without which
+  `lib/models.js` throws at import and the container never starts. A third will
+  not be caught the same way. Build it once before relying on it.
 
 ---
 
