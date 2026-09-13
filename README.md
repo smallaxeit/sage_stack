@@ -350,6 +350,31 @@ asks for scripture references, a service manual asks for torque specs.
 Then either drop files in `source/` and hit **Build**, or upload through the
 Knowledge screen.
 
+Only `voice` is required. Everything else falls back to a default, and the
+model defaults come from `config/models.json`.
+
+Two constraints worth knowing before you pick a slug. It becomes a directory
+name **and** a Postgres schema name, so it must be lowercase, start with a
+letter, and contain only letters, digits and underscores — the display `name`
+is free to be anything. And profiles are cached at boot, so a new or edited
+`subject.json` needs a restart; loading documents does not.
+
+### What reads the profile
+
+Adding a subject touches no code. These are the files that consume one, and
+none of them switch on the slug:
+
+| File | What it takes from the profile |
+|---|---|
+| `lib/subjects.js` | loads, validates, assembles the system prompt from `voice` + `rules` + `modes` + `grounding` |
+| `lib/runtime.js` | the registry — pairs a profile with its store and embedder, caches it |
+| `lib/claude.js` | `retrieval` (topK, filterKey, contextMode…), `chat.model`, source aliases |
+| `lib/ingest/index.js` | `ingest` (chunk sizes, mode) and `extract` — the fields pulled from every passage |
+| `lib/embed/index.js` | `embed` (driver, model, dim) |
+| `lib/conceptmap.js` | `conceptMap` |
+| `lib/store/*.js` | `store`, if a subject names its own database |
+| `routes/*.js` | pass the profile through; no per-subject logic |
+
 ---
 
 ## Project structure
