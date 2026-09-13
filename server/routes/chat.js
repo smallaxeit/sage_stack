@@ -5,7 +5,7 @@ import path from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { getRuntime } from '../lib/runtime.js';
 import { subjectSourceDir } from '../lib/subjects.js';
-import { ingestDirectory } from '../lib/ingest/index.js';
+import { ingestDirectory, documentsDir } from '../lib/ingest/index.js';
 import { requireAdmin } from '../lib/auth.js';
 import { availableTerms } from '../lib/prefer.js';
 import { modelConfig } from '../lib/models.js';
@@ -74,10 +74,11 @@ router.get('/status', async (req, res) => {
 });
 
 // ─── Build ────────────────────────────────────────────────────────────────────
-// Bulk-ingests every file in the subject's source directory. Previously this
-// spawned build-knowledge.js, which ignored --subject and wrote to Supabase;
-// it now runs the same pipeline the upload route uses, in-process, so progress
-// is real rather than polled from a file another process may never write.
+// Ingests every file a subject has, from whichever directory holds them —
+// subjects/<slug>/source/ for a staged bulk load, else data/documents/<slug>/,
+// which is where uploads land and therefore where a rebuild has to read from.
+// Runs the same pipeline the upload route uses, in-process, so progress is real
+// rather than polled from a file another process may never write.
 
 let building = null;   // { subject, startedAt, done, total, current, results }
 
@@ -97,19 +98,49 @@ router.post('/build', requireAdmin, async (req, res) => {
     return res.status(400).json({ ok: false, message: err.message });
   }
 
-  const dir = subjectSourceDir(subject);
-  let files;
-  try {
-    files = (await readdir(dir)).filter(f => !f.startsWith('.'));
-  } catch {
-    return res.status(400).json({ ok: false, message: `No source directory for "${subject}" (expected ${dir})` });
-  }
-  if (files.length === 0) {
-    return res.status(400).json({ ok: false, message: `No files in ${dir}` });
+  /**
+   * Which directory holds this subject's files.
+   *
+   * `source/` is a staging area you fill by hand for a bulk load. Anything
+   * uploaded through the Knowledge screen lands in data/documents/ instead —
+   * so for a subject built by uploading, `source/` is empty and re-running a
+   * build against it did nothing at all, while reporting the missing directory
+   * as an error.
+   *
+   * Falling back to data/documents/ is what makes "rebuild this subject" a
+   * real action: re-ingesting after a chunker change, or retrying a document
+   * whose analysis failed, without re-uploading anything by hand. Ingest
+   * already declines to copy a file onto itself, so reading from the directory
+   * it would write to is safe.
+   */
+  const candidates = [
+    { dir: subjectSourceDir(subject), label: `subjects/${subject}/source/` },
+    { dir: documentsDir(subject), label: `data/documents/${subject}/` },
+  ];
+
+  let chosen = null;
+  for (const candidate of candidates) {
+    let names;
+    try { names = (await readdir(candidate.dir)).filter(f => !f.startsWith('.')); }
+    catch { continue; }                       // absent is the same as empty here
+    if (names.length) { chosen = { ...candidate, files: names }; break; }
   }
 
-  building = { subject, startedAt: Date.now(), done: 0, total: files.length, current: null, results: [] };
-  res.json({ ok: true, subject, files: files.length });
+  if (!chosen) {
+    return res.status(400).json({
+      ok: false,
+      message:
+        `Nothing to ingest for "${subject}". Put files in ${candidates[0].label} ` +
+        `for a bulk build, or upload them on the Knowledge screen.`,
+    });
+  }
+
+  const { dir, files, label } = chosen;
+  building = {
+    subject, startedAt: Date.now(), done: 0, total: files.length,
+    current: null, results: [], dir: label,
+  };
+  res.json({ ok: true, subject, files: files.length, dir: label });
 
   // Runs past the response; /build-progress reports it.
   (async () => {
@@ -148,6 +179,7 @@ router.get('/build-progress', (req, res) => {
   res.json({
     status: building.finishedAt ? 'done' : 'running',
     subject: building.subject,
+    dir: building.dir ?? null,
     current: building.done,
     total: building.total,
     file: building.current,
