@@ -97,8 +97,11 @@ Approved for a future session. Nothing here is in progress.
   fallback paths are unit-tested against doubles, not real rate limits. (The
   softail scans came from ask_cooter, which did its own run.)
 
-- **`ingest.mode: "auto"` is never exercised.** `detectIngestMode` exists, but
-  every committed subject pins `text` or `vision`.
+- **Vision ingestion end to end is still the untested path.** `auto` now routes
+  a scanned PDF to vision instead of refusing it, and the routing decision is
+  covered — but no test drives a real scan through rendering and extraction,
+  because there is no scan fixture in the repo and building one means embedding
+  an image in a hand-written PDF. The first real scan upload is the test.
 
 - **The Docker image has never been built.** Docker is not installed on the dev
   machine, so two boot-stopping omissions were caught by reading the Dockerfile
