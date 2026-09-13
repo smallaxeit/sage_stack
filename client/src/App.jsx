@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Chat from './components/Chat';
 import KnowledgePanel from './components/KnowledgePanel';
 import DocumentBrowser from './components/DocumentBrowser';
@@ -29,6 +29,12 @@ export default function App() {
   const [sessionId, setSessionId] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('ss-theme') || 'dark');
+  const [order, setOrder] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ss-subject-order')) || []; }
+    catch { return []; }
+  });
+  const [dragging, setDragging] = useState(null);   // slug being moved
+  const [dropTarget, setDropTarget] = useState(null);
   const [docs, setDocs] = useState([]);
   const pollRef = useRef(null);
 
@@ -39,6 +45,7 @@ export default function App() {
 
   useEffect(() => { if (subject) localStorage.setItem('ss-subject', subject); }, [subject]);
   useEffect(() => { localStorage.setItem('ss-sidebar', sidebar ? 'open' : 'closed'); }, [sidebar]);
+  useEffect(() => { localStorage.setItem('ss-subject-order', JSON.stringify(order)); }, [order]);
 
   const refreshStatus = useCallback(() => {
     const url = subject ? `/api/status?subject=${encodeURIComponent(subject)}` : '/api/status';
@@ -116,8 +123,47 @@ export default function App() {
     return () => clearTimeout(pollRef.current);
   }, [refreshStatus, refreshDocs]);
 
-  const subjects = status?.subjects || [];
+  /**
+   * Sidebar order is the reader's, not the server's.
+   *
+   * Which area you want on top is a personal habit — the one you use daily
+   * versus the one you loaded once — so it lives in this browser rather than
+   * in the store, where it would be imposed on everyone.
+   *
+   * Stored as a list of slugs. A subject missing from that list (newly added,
+   * or added on another machine) sorts to the bottom in server order rather
+   * than jumping somewhere arbitrary.
+   */
+  const subjects = useMemo(() => {
+    const list = status?.subjects || [];
+    if (!order.length) return list;
+    const rank = new Map(order.map((slug, i) => [slug, i]));
+    return [...list].sort(
+      (a, b) => (rank.get(a.slug) ?? Infinity) - (rank.get(b.slug) ?? Infinity));
+  }, [status, order]);
+
   const current = subjects.find(s => s.slug === subject);
+
+  /** Move `slug` to sit where `target` currently sits. */
+  const reorder = useCallback((slug, target) => {
+    if (!slug || slug === target) return;
+    const slugs = subjects.map(s => s.slug);
+    const next = slugs.filter(s => s !== slug);
+    const at = next.indexOf(target);
+    next.splice(at === -1 ? next.length : at, 0, slug);
+    setOrder(next);
+  }, [subjects]);
+
+  /** Keyboard equivalent, because a drag handle alone is unreachable. */
+  const nudge = useCallback((slug, delta) => {
+    const slugs = subjects.map(s => s.slug);
+    const from = slugs.indexOf(slug);
+    const to = from + delta;
+    if (from === -1 || to < 0 || to >= slugs.length) return;
+    const next = [...slugs];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    setOrder(next);
+  }, [subjects]);
   const ready = current?.ready ?? false;
 
   /**
@@ -191,7 +237,15 @@ export default function App() {
             width: 250, flex: 'none', borderRight: '1px solid var(--line)',
             background: 'var(--panel)', display: 'flex', flexDirection: 'column', minHeight: 0,
           }}>
-            <div className="side-head"><span>Knowledge areas</span></div>
+            <div className="side-head">
+              <span>Knowledge areas</span>
+              {subjects.length > 1 && (
+                <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}
+                      title="Drag a row to reorder, or focus one and press Alt+Up / Alt+Down. The order is saved in this browser.">
+                  drag to sort
+                </span>
+              )}
+            </div>
             <div style={{ overflowY: 'auto', padding: '4px 8px 12px' }}>
               {subjects.length === 0 && (
                 <p style={{ color: 'var(--muted)', fontSize: 12.5, padding: '8px 10px' }}>
@@ -204,7 +258,42 @@ export default function App() {
                   className={`hist ${s.slug === subject ? 'active' : ''}`}
                   onClick={() => { setSubject(s.slug); setOpenDoc(null); }}
                   title={s.storeError || `${s.chunks} chunks via ${s.storeDriver}`}
-                  style={{ whiteSpace: 'normal' }}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragging(s.slug);
+                    e.dataTransfer.effectAllowed = 'move';
+                    // Firefox starts no drag at all without payload on the event.
+                    e.dataTransfer.setData('text/plain', s.slug);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();              // required, or no drop fires
+                    e.dataTransfer.dropEffect = 'move';
+                    if (s.slug !== dropTarget) setDropTarget(s.slug);
+                  }}
+                  onDragLeave={() => setDropTarget(t => (t === s.slug ? null : t))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    reorder(dragging || e.dataTransfer.getData('text/plain'), s.slug);
+                    setDragging(null);
+                    setDropTarget(null);
+                  }}
+                  onDragEnd={() => { setDragging(null); setDropTarget(null); }}
+                  onKeyDown={(e) => {
+                    // Alt+Arrow reorders without a mouse. Plain arrows still
+                    // move focus, and Enter still selects.
+                    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+                    e.preventDefault();
+                    nudge(s.slug, e.key === 'ArrowUp' ? -1 : 1);
+                  }}
+                  style={{
+                    whiteSpace: 'normal',
+                    cursor: dragging ? 'grabbing' : 'pointer',
+                    opacity: dragging === s.slug ? 0.4 : 1,
+                    // The line shows where it will land, rather than tinting the
+                    // row, which reads as selection.
+                    boxShadow: dropTarget === s.slug && dragging && dragging !== s.slug
+                      ? 'inset 0 2px 0 0 var(--accent, #3fb950)' : undefined,
+                  }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{
