@@ -164,5 +164,23 @@ Approved for a future session. Nothing here is in progress.
 
 - **No structured logging.** Everything is `console.log`.
 
+- **One moderate advisory is unfixable without Express 5.** `qs` 6.14.2 is
+  pinned by Express 4.22.1, and the advisory is a DoS in `qs.stringify` with
+  comma-format arrays and `encodeValuesOnly`. Nothing here calls `qs.stringify`
+  at all — it arrives through Express's own query parsing — so the path is not
+  reachable from this app. Clearing it means the Express 4 to 5 migration,
+  which is worth doing on its own terms rather than for this.
+
+- **The Build action reads a directory nothing uses.** It ingests
+  `subjects/<slug>/source/`, which is empty for every subject: rx was uploaded
+  through the Knowledge screen so its files are in `data/documents/rx/`, and
+  theology and softail were imported straight into the store with no local
+  files at all. So "re-running updates existing documents in place" is not true
+  — it would not touch the documents a subject actually has, which is why
+  re-doing a single document meant re-uploading it by hand. Build should fall
+  back to `data/documents/<slug>/` when `source/` is empty, name the directory
+  it is about to read, and stop reporting a missing `source/` as an error for
+  a subject that has documents by another route.
+
 - **`READING_LIST.md` was ingested as a source** into theology (2 chunks). It
   is documentation, not content. A bulk build should have an ignore list.
