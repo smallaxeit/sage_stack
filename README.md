@@ -98,6 +98,10 @@ document → pages → chunks → (analysis) → embeddings → store
 Each stage has different requirements, and the pipeline runs as far as your
 environment allows rather than failing whole:
 
+Input formats: **PDF, DOCX, TXT, MD, JSON, CSV**. Only PDFs store page
+numbers, so only PDFs yield citations that open to a page — a Word file has no
+fixed pagination to cite.
+
 | Stage | Needs | Without it |
 |---|---|---|
 | parse + chunk | nothing | — |

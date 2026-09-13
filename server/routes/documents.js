@@ -36,6 +36,7 @@ const CONTENT_TYPES = {
   '.md':  'text/markdown; charset=utf-8',
   '.json': 'application/json',
   '.csv': 'text/csv',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
 /** Resolve a file inside the subject's document directory, or null. */

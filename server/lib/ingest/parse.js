@@ -17,6 +17,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import pdfParse from 'pdf-parse';
 import { parse as csvParse } from 'csv-parse/sync';
+import mammoth from 'mammoth';
 
 /** Page labels look like "3-14", "iv", or a bare number, alone on a line. */
 const PAGE_LABEL = /^\s*((?:[0-9]+[-–][0-9]+)|(?:[ivxlcdm]{1,7})|(?:[0-9]{1,4}))\s*$/i;
@@ -87,8 +88,9 @@ async function parsePdfPages(buffer) {
 /**
  * Parse any supported document into pages.
  *
- * Non-paged formats (.txt, .md, .json, .csv) return a single page with
- * pdfPage null, so downstream code has one shape to handle.
+ * Non-paged formats (.txt, .md, .json, .csv, .docx) return a single page with
+ * pdfPage null, so downstream code has one shape to handle. Only PDFs carry
+ * page numbers, so only PDFs produce page citations.
  */
 export async function parseDocument(filePath, { ext: explicitExt } = {}) {
   // Prefer an explicitly supplied extension: an upload lives at a random temp
@@ -109,6 +111,23 @@ export async function parseDocument(filePath, { ext: explicitExt } = {}) {
         paged: false,
         pages: [{ pdfPage: null, printedPage: null, text: JSON.stringify(JSON.parse(raw.toString('utf-8')), null, 2) }],
       };
+    case '.docx': {
+      // A Word file has no fixed pages — its pagination is a rendering
+      // decision the reader's page size makes, not something stored. So it
+      // takes the non-paged path and its chunks carry no page number, exactly
+      // like .txt. Citations for this document name the source, not a page.
+      const { value } = await mammoth.extractRawText({ buffer: raw });
+
+      // mammoth separates paragraphs with a single newline. The chunker packs
+      // on blank lines, so without this the whole document arrives as one
+      // paragraph and splitOversized has to fall back to cruder boundaries.
+      const text = value.replace(/\r\n/g, '\n').split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n\n');
+
+      return { paged: false, pages: [{ pdfPage: null, printedPage: null, text }] };
+    }
     case '.csv': {
       const records = csvParse(raw, { columns: true, skip_empty_lines: true });
       const text = records.map(r => Object.entries(r).map(([k, v]) => `${k}: ${v}`).join(' | ')).join('\n');
