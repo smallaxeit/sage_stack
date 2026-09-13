@@ -102,7 +102,12 @@ streams per stage.
 **In bulk:** put files in `subjects/<slug>/source/`, then `POST /api/build`
 (or the Build action). Poll `/api/build-progress`.
 
-Supported: PDF, TXT, MD, JSON, CSV.
+Supported: PDF, DOCX, TXT, MD, JSON, CSV.
+
+Only PDFs carry page numbers, so only PDFs produce `[p.N]` citations that open
+to a page. Everything else cites the document. A spreadsheet is best exported to
+CSV: each row becomes a labelled line ("part: rear axle | torque: 35"), which
+survives chunking and embedding in a way a bare grid of numbers does not.
 
 **A scanned PDF needs vision ingestion.** Text extraction returns almost
 nothing for a scan and raises no error, so the check is explicit: too little
