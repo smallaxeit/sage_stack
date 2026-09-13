@@ -125,6 +125,10 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
   const analyzed = docs.reduce((n, d) => n + (d.analyzed || 0), 0);
   const anaPct = chunks > 0 ? Math.round((analyzed / chunks) * 100) : 0;
   const unanalyzed = Math.max(0, chunks - analyzed);
+  // Documents with a file on disk — the ones a re-ingest can actually re-read.
+  // A subject imported straight into the store has chunks but no files, so it
+  // has nothing to rebuild from.
+  const docCount = docs.filter(d => d.hasFile).length;
 
   // Rates come from the server's config, so there is one price table rather
   // than a copy here that drifts. Null until it loads, and every estimate
@@ -297,14 +301,25 @@ export default function AdminPanel({ open, onClose, subject, current, docs = [],
 
                 <div className="admin-action">
                   <div style={{ flex: 1 }}>
-                    <div className="t">Ingest source directory</div>
+                    <div className="t">{docCount > 0 ? 'Re-ingest documents' : 'Ingest staged files'}</div>
                     <div className="d">
-                      Parse, analyze and embed every file in <code>subjects/{subject}/source/</code>.
-                      Re-running updates existing documents in place.
-                      {unanalyzed > 0 && <> Analysis of {unanalyzed.toLocaleString()} chunks ≈ <span className="cost">{money(costAnalyze)}</span>.</>}
+                      {docCount > 0 ? (
+                        <>
+                          Re-parse, re-analyze and re-embed the {docCount.toLocaleString()}
+                          {docCount === 1 ? ' document' : ' documents'} this subject already
+                          holds. Use it after a chunking change, or to retry a document whose
+                          analysis failed. Chunks are replaced in place.
+                        </>
+                      ) : (
+                        <>
+                          Parse, analyze and embed every file in <code>subjects/{subject}/source/</code>.
+                          Nothing is staged there yet — you can upload on the Knowledge screen instead.
+                        </>
+                      )}
+                      {unanalyzed > 0 && <> Analysis of {unanalyzed.toLocaleString()} unanalyzed {unanalyzed === 1 ? 'chunk' : 'chunks'} ≈ <span className="cost">{money(costAnalyze)}</span>.</>}
                     </div>
                   </div>
-                  <button className="btn" disabled={buildRunning} onClick={() => run('/build', 'Build started')}>
+                  <button className="btn" disabled={buildRunning || docCount === 0} onClick={() => run('/build', 'Build started')}>
                     {buildRunning ? 'Running…' : 'Run'}
                   </button>
                 </div>

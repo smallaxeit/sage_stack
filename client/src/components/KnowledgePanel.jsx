@@ -134,8 +134,8 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
       {/* Upload */}
       {readOnly ? (
         <div style={{ padding: '12px 16px', borderRadius: 10, border: '1px dashed var(--line)', color: 'var(--muted)', fontSize: 13.5 }}>
-          This knowledge area connects to an existing corpus and is <strong>read-only</strong> —
-          documents cannot be added or removed through SageStack.
+          This knowledge area is <strong>read-only</strong> — it reads another database
+          in place, so documents cannot be added or removed here.
         </div>
       ) : (
         <div
@@ -149,11 +149,11 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
             background: dragging ? 'var(--chip)' : 'transparent',
           }}
         >
-          <input ref={fileInput} type="file" accept=".pdf,.txt,.md,.json,.csv"
+          <input ref={fileInput} type="file" accept=".pdf,.docx,.txt,.md,.json,.csv"
             style={{ display: 'none' }} onChange={e => doUpload(e.target.files?.[0])} />
-          <div style={{ color: 'var(--ink)' }}>Drop a PDF here, or click to choose</div>
+          <div style={{ color: 'var(--ink)' }}>Drop a file here, or click to choose</div>
           <div style={{ color: 'var(--muted)', fontSize: 12.5, marginTop: 4 }}>
-            PDF, TXT, MD, JSON, CSV — added to {current?.name || subject}
+            PDF, DOCX, TXT, MD, JSON, CSV — added to {current?.name || subject}
           </div>
         </div>
       )}
@@ -206,8 +206,8 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
                   </div>
                 </button>
                 {/* Offer the viewer when a page can actually be shown — a
-                    local PDF, or page scans served from the store. A corpus
-                    connected in place has the latter and not the former. */}
+                    local PDF, or page scans served from the store. A subject
+                    reading another database has the latter and not the former. */}
                 {d.viewable ? (
                   <button className="btn icon" onClick={() => onOpenDoc({ filename: d.filename, title: d.filename, page: 1 })}>
                     View
@@ -263,7 +263,7 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
         </div>
       </div>
 
-      {/* Table of contents, where the corpus has one */}
+      {/* Table of contents, where the documents have one */}
       {sections.length > 0 && (
         <div>
           <div className="label-mini" style={{ marginBottom: 8 }}>Contents ({sections.length} sections)</div>
