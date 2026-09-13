@@ -333,9 +333,37 @@ export function subjectSourceDir(slug, opts = {}) {
   return path.join(subjectsRoot(opts), assertValidSlug(slug), 'source');
 }
 
+/**
+ * Prose that may live in its own file instead of a JSON string.
+ *
+ * These three fields are the long ones — a voice runs to paragraphs — and a
+ * JSON string is a poor container for paragraphs: the whole thing is one line
+ * with escaped newlines, so it runs off the side of an editor, diffs as a
+ * single changed line, and cannot be read without unescaping it in your head.
+ *
+ * A sibling .md file wins over the JSON key of the same name, so a subject can
+ * migrate one field at a time. Keeping both is not an error; the file is the
+ * one that counts.
+ */
+const PROSE_FILES = [
+  { file: 'voice.md', apply: (raw, text) => { raw.voice = text; } },
+  { file: 'rules.md', apply: (raw, text) => { raw.rules = text; } },
+  {
+    file: 'grounding.md',
+    apply: (raw, text) => {
+      // Only the instruction moves out. `mode` stays in JSON — it is a keyword,
+      // not prose, and it belongs where the rest of the settings are.
+      raw.grounding = (raw.grounding && typeof raw.grounding === 'object')
+        ? { ...raw.grounding, instruction: text }
+        : { instruction: text };
+    },
+  },
+];
+
 export async function loadSubject(slug, opts = {}) {
   assertValidSlug(slug);
-  const file = path.join(subjectsRoot(opts), slug, 'subject.json');
+  const dir = path.join(subjectsRoot(opts), slug);
+  const file = path.join(dir, 'subject.json');
   let raw;
   try {
     raw = JSON.parse(await fs.readFile(file, 'utf8'));
@@ -343,6 +371,21 @@ export async function loadSubject(slug, opts = {}) {
     if (err.code === 'ENOENT') throw new Error(`No such subject: "${slug}" (expected ${file})`);
     throw new Error(`subject "${slug}": subject.json is not valid JSON — ${err.message}`);
   }
+
+  for (const { file: name, apply } of PROSE_FILES) {
+    let text;
+    try {
+      text = await fs.readFile(path.join(dir, name), 'utf8');
+    } catch (err) {
+      if (err.code === 'ENOENT') continue;
+      throw new Error(`subject "${slug}": cannot read ${name} — ${err.message}`);
+    }
+    const trimmed = text.trim();
+    // An empty file is a mistake worth naming rather than a silent empty voice.
+    if (!trimmed) throw new Error(`subject "${slug}": ${name} is empty`);
+    apply(raw, trimmed);
+  }
+
   return normalizeProfile(slug, raw);
 }
 

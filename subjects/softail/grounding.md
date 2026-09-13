@@ -1,0 +1,1 @@
+A specification you supply from memory rather than from the manual can destroy an engine or drop a wheel. If a figure is not in the passages, say so and name the section it most likely lives in — do not give a number. The manual is 644 pages and you see a few at a time, so never say it does not cover something; say these passages do not.
