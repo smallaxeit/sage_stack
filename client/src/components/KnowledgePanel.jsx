@@ -2,6 +2,29 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from '../api';
 
 /**
+ * Seconds since a long operation started.
+ *
+ * Vision ingestion runs to minutes on a long scan, and a still screen during
+ * that is indistinguishable from a dead one. A ticking number is the cheapest
+ * way to say the work is still yours.
+ */
+function Elapsed({ since }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const s = Math.max(0, Math.round((now - since) / 1000));
+  const shown = s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+  return (
+    <div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 5 }}>
+      {shown} elapsed
+    </div>
+  );
+}
+
+/**
  * What the knowledge base actually contains, and how to add to it.
  *
  * It keeps three states apart that are easy to conflate, because collapsing
@@ -64,9 +87,35 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
     }
   }, [expanded, chunks, subject]);
 
+  /**
+   * What the current stage is doing, in the reader's terms.
+   *
+   * Ingest already reports done/total per stage and an estimate before a vision
+   * run; the panel used to print the bare stage name and drop the rest. On a
+   * scan that meant one unchanging word for minutes, which is indistinguishable
+   * from a hang.
+   */
+  function stageLabel(u) {
+    const n = (x) => Number(x ?? 0).toLocaleString();
+    const of = (done, total) => (total ? `${n(done)} of ${n(total)}` : n(done));
+    switch (u.stage) {
+      case 'start':         return 'Uploading';
+      case 'parse':         return 'Reading the file';
+      case 'detected-scan': return `Scanned document — ${n(u.pages)} pages to read with vision`;
+      case 'vision':        return `Reading page ${of(u.done, u.total)}`
+                                 + (u.estimateUsd ? ` · about $${u.estimateUsd.toFixed(2)}` : '')
+                                 + (u.failed ? ` · ${n(u.failed)} failed` : '');
+      case 'chunk':         return 'Splitting into passages';
+      case 'analyze':       return `Analyzing passage ${of(u.done, u.total)}`;
+      case 'embed':         return `Embedding passage ${of(u.done, u.total)}`;
+      case 'store':         return `Saving ${n(u.total)} passages`;
+      default:              return u.stage;
+    }
+  }
+
   async function doUpload(file) {
     if (!file || readOnly) return;
-    setUpload({ filename: file.name, stage: 'start' });
+    setUpload({ filename: file.name, stage: 'start', startedAt: Date.now() });
 
     const body = new FormData();
     body.append('file', file);
@@ -90,9 +139,18 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
           const ev = JSON.parse(frame.slice(6));
           if (ev.stage === 'error') { setUpload(u => ({ ...u, stage: 'error', error: ev.error })); return; }
           if (ev.stage === 'done') { setUpload({ filename: ev.result.filename, stage: 'done', result: ev.result }); onRefresh?.(); return; }
-          setUpload(u => ({ ...u, ...ev }));
+          setUpload(u => ({ ...u, ...ev, startedAt: u?.startedAt ?? Date.now() }));
         }
       }
+
+      // The stream ended without saying how it went. A server restart mid-upload
+      // does this, and the old code simply fell out of the loop — leaving the
+      // last stage on screen forever, looking like work still in progress.
+      setUpload(u => ({
+        ...(u || {}),
+        stage: 'error',
+        error: 'The connection closed before ingestion finished. Nothing was saved — try the upload again.',
+      }));
     } catch (err) {
       setUpload(u => ({ ...(u || {}), stage: 'error', error: err.message }));
     }
@@ -163,9 +221,28 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
           <div>
             {upload.stage === 'error' ? '✕ ' : upload.stage === 'done' ? '✓ ' : '… '}
             <strong>{upload.filename}</strong>
-            {upload.stage !== 'done' && upload.stage !== 'error' && ` — ${upload.stage}`}
-            {upload.total ? ` ${upload.done ?? 0}/${upload.total}` : ''}
+            {upload.stage !== 'done' && upload.stage !== 'error' && (
+              <span style={{ color: 'var(--muted)' }}> — {stageLabel(upload)}</span>
+            )}
           </div>
+
+          {/* A bar only where there is something to measure. Reading a file has
+              no denominator; reading page 3 of 8 does. */}
+          {upload.total > 0 && upload.stage !== 'done' && upload.stage !== 'error' && (
+            <div style={{ height: 3, borderRadius: 999, background: 'var(--line)', marginTop: 7, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 999, background: 'var(--accent, #3fb950)',
+                width: `${Math.min(100, Math.round(((upload.done ?? 0) / upload.total) * 100))}%`,
+                transition: 'width .25s ease',
+              }} />
+            </div>
+          )}
+
+          {/* Vision runs to minutes on a long scan. Elapsed time is the
+              difference between "slow" and "stuck". */}
+          {upload.startedAt && upload.stage !== 'done' && upload.stage !== 'error' && (
+            <Elapsed since={upload.startedAt} />
+          )}
           {upload.error && <div style={{ color: '#f85149', fontSize: 12.5, marginTop: 4 }}>{upload.error}</div>}
           {upload.result && (
             <>
