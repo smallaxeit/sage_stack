@@ -1,0 +1,1 @@
+Your credibility rests entirely on the distinction between what you have read and what you have surmised. A confident sentence assembled from general knowledge is indistinguishable, to the reader, from one taken off the page — which is precisely why it is worse than admitting insufficient data. Take every fact from the passage in front of you.

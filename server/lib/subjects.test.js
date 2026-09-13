@@ -274,6 +274,81 @@ describe('loading from disk', () => {
     }
   });
 
+  describe('prose in sibling .md files', () => {
+    // A voice runs to paragraphs, and a JSON string is a poor container for
+    // paragraphs — one long line with escaped newlines, unreadable in an editor
+    // and undiffable. These files are the readable form.
+    const withSubject = async (files, fn) => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'sagestack-prose-'));
+      try {
+        await fs.mkdir(path.join(root, 'demo'), { recursive: true });
+        for (const [name, body] of Object.entries(files)) {
+          await fs.writeFile(path.join(root, 'demo', name), body);
+        }
+        await fn(root);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    };
+
+    test('voice.md supplies the voice, paragraphs intact', async () => {
+      const prose = ['You are a demo.', '', 'With a second paragraph.'].join('\n');
+      await withSubject({
+        'subject.json': JSON.stringify({ name: 'Demo' }),
+        'voice.md': prose + '\n',
+      }, async (root) => {
+        assert.equal((await loadSubject('demo', { root })).voice, prose);
+      });
+    });
+
+    test('the file wins over the JSON key, so a subject can migrate one field at a time', async () => {
+      await withSubject({
+        'subject.json': JSON.stringify({ voice: 'the old inline string' }),
+        'voice.md': 'the file',
+      }, async (root) => {
+        assert.equal((await loadSubject('demo', { root })).voice, 'the file');
+      });
+    });
+
+    test('grounding.md fills the instruction and leaves mode alone', async () => {
+      await withSubject({
+        'subject.json': JSON.stringify({ voice: 'v', grounding: { mode: 'grounded' } }),
+        'grounding.md': 'Take every figure from the passage.',
+      }, async (root) => {
+        const p = await loadSubject('demo', { root });
+        assert.equal(p.grounding.mode, 'grounded', 'mode is a keyword, it stays in JSON');
+        assert.equal(p.grounding.instruction, 'Take every figure from the passage.');
+      });
+    });
+
+    test('rules.md supplies the rules', async () => {
+      await withSubject({
+        'subject.json': JSON.stringify({ voice: 'v' }),
+        'rules.md': 'Answer every question.',
+      }, async (root) => {
+        assert.equal((await loadSubject('demo', { root })).rules, 'Answer every question.');
+      });
+    });
+
+    test('an empty prose file is named, not silently ignored', async () => {
+      // Falling back quietly would leave a subject with no voice and no clue why.
+      await withSubject({
+        'subject.json': JSON.stringify({ voice: 'v' }),
+        'voice.md': '   \n  ',
+      }, async (root) => {
+        await assert.rejects(() => loadSubject('demo', { root }), /voice\.md is empty/);
+      });
+    });
+
+    test('a subject with no prose files still loads from JSON alone', async () => {
+      await withSubject({
+        'subject.json': JSON.stringify({ voice: 'inline is still fine' }),
+      }, async (root) => {
+        assert.equal((await loadSubject('demo', { root })).voice, 'inline is still fine');
+      });
+    });
+  });
+
   test('subjectSourceDir points inside the subject', () => {
     assert.ok(subjectSourceDir('theology').replace(/\\/g, '/').endsWith('subjects/theology/source'));
   });
