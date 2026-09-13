@@ -176,12 +176,13 @@ export async function ingestDocument({
 
   // A scanned document takes a different route entirely: rendered and read
   // page by page rather than parsed. Chosen by the subject, or per document.
-  if ((opts.mode ?? profile.ingest.mode) === 'vision') {
-    return ingestVisionDocument({
-      profile, store, embedder, analysisClient, filePath,
-      filename: safeName, keepOriginal, onProgress, ...opts,
-    });
-  }
+  const mode = opts.mode ?? profile.ingest.mode;
+  const toVision = () => ingestVisionDocument({
+    profile, store, embedder, analysisClient, filePath,
+    filename: safeName, keepOriginal, onProgress, ...opts,
+  });
+
+  if (mode === 'vision') return toVision();
 
   // ─── Parse ─────────────────────────────────────────────────────────────────
   onProgress({ stage: 'parse', filename: safeName });
@@ -190,15 +191,42 @@ export async function ingestDocument({
   // Detect a scan rather than storing an empty knowledge base and calling it
   // success. This is the failure ask_cooter hit: 651 pages, ~0 extractable
   // characters, and pdf-parse reports no error at all.
-  const detected = detectIngestMode(pages);
+  // Only a PDF can be read as a scan — vision renders pages, and rendering
+  // needs a PDF. A near-empty .txt or .docx is just a near-empty document, and
+  // routing it to a vision model would fail at the renderer with a far less
+  // obvious error than "this file has almost nothing in it".
+  const isPdf = path.extname(safeName).toLowerCase() === '.pdf';
+  const detected = isPdf ? detectIngestMode(pages) : 'text';
   if (detected === 'vision') {
+    // "auto" means do what detection found. Until now it detected the scan and
+    // then refused it, which made auto behave exactly like text and left the
+    // reader to set a mode by hand for a document the code had already
+    // identified.
+    if (mode === 'auto') {
+      if (!analysisClient) {
+        throw new Error(
+          `"${safeName}" is a scan (${textVolume(pages)} extractable characters across ` +
+          `${pages.length} page(s)) and can only be read by a vision model, which needs ` +
+          `ANTHROPIC_API_KEY. Set it, or ingest a text-bearing copy of this document.`,
+        );
+      }
+      warnings.push(
+        `"${safeName}" has almost no extractable text and was read as a scan — rendered ` +
+        `and read page by page, at roughly $0.01 a page.`,
+      );
+      onProgress({ stage: 'detected-scan', filename: safeName, pages: pages.length });
+      const result = await toVision();
+      return { ...result, warnings: [...warnings, ...(result.warnings ?? [])] };
+    }
+
+    // An explicit mode:"text" is a claim about the document that turned out to
+    // be wrong, so say so rather than storing an empty knowledge base.
     throw new Error(
       `"${safeName}" has almost no extractable text (${textVolume(pages)} characters across ` +
-      `${pages.length} page(s)) — it is a scan and needs vision ingestion. Set the subject's ` +
-      `ingest.mode to "vision", or pass mode:"vision" for this document.`,
+      `${pages.length} page(s)) — it is a scan and needs vision ingestion. This subject's ` +
+      `ingest.mode is "${mode}"; set it to "auto" or "vision".`,
     );
   }
-  // (vision is handled before this point — see ingestVisionDocument)
 
   // ─── Chunk ─────────────────────────────────────────────────────────────────
   onProgress({ stage: 'chunk', filename: safeName });
