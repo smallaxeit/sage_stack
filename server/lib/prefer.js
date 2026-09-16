@@ -94,19 +94,36 @@ export function matches(chunk, key, active) {
 /**
  * Re-rank so preferred passages rise, then take the top `limit`.
  *
- * The boost is additive on a cosine score that in practice sits around
- * 0.5-0.7, so ~0.12 reliably lifts a relevant match above an unpreferred one
- * without letting a weak match outrank a strong one. Setting it near 1 would
- * make it a hard filter by another name.
+ * The boost is PROPORTIONAL — score * (1 + boost) — not added on.
+ *
+ * It used to be additive, tuned against cosine scores "in practice around
+ * 0.5-0.7", where +0.12 is a modest 20% thumb on the scale. That assumption
+ * fails exactly when it matters. A vague question, or a misspelled one, makes
+ * every score weak: measured on one real question, a typo took the top matches
+ * from 0.58 to 0.31. At 0.31 the same +0.12 is a 39% lift, so the reader's
+ * standing preferences took over the ranking at the moment nothing in the
+ * documents was distinguishing itself — the worst moment to lean on a prior.
+ *
+ * Proportional keeps the thumb the same weight whatever the scores look like.
+ * A preferred passage still cannot leapfrog a much stronger unpreferred one,
+ * which is the property that keeps this soft rather than a filter wearing a
+ * different hat.
+ *
+ * The value is a FRACTION now, not an absolute: 0.15 means fifteen percent.
+ * It is 0.15 rather than the old 0.12 because the old number was absolute —
+ * matched against real scores, 0.15 proportional reproduces the behavior the
+ * tests pin, where a preferred passage beats one about ten percent better but
+ * loses to one far stronger.
  *
  * Stable within a tier: equal scores keep the order the store returned.
  */
-export function preferRank(results, { key, active, boost = 0.12, limit = 10 } = {}) {
+export function preferRank(results, { key, active, boost = 0.15, limit = 10 } = {}) {
   if (!key || !active?.length) return results.slice(0, limit);
 
   const scored = results.map((r, i) => {
     const hit = matches(r, key, active);
-    return { r, i, hit, score: (r.score ?? 0) + (hit ? boost : 0) };
+    const base = r.score ?? 0;
+    return { r, i, hit, score: hit ? base * (1 + boost) : base };
   });
 
   scored.sort((a, b) => (b.score - a.score) || (a.i - b.i));

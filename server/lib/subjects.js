@@ -154,7 +154,7 @@ const DEFAULTS = {
   chat:          { model: CHAT.model, maxTokens: CHAT.maxTokens },
   extract:       {},
   conceptMap:    { enabled: false },
-  retrieval:     { topK: 10, rewriteFollowUps: true, filterKey: null, filterFields: null, overfetch: 3, boost: 0.12,
+  retrieval:     { topK: 10, rewriteFollowUps: true, filterKey: null, filterFields: null, overfetch: 3, boost: 0.15,
                    contextMode: 'search', maxContextChars: 250_000, coverPerTerm: 1 },
   sourceAliases: {},           // filename -> human-readable title
   store:         null,         // null = use the app-wide KB_STORE; else a per-subject backend
