@@ -16,6 +16,9 @@ import fs from 'fs/promises';
 import { createReadStream } from 'fs';
 import path from 'path';
 import os from 'os';
+// Node's built-in. Used only for randomUUID(), to give each ingest job an id a
+// client can poll — the same thing routes/chat.js uses for session ids.
+import crypto from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
 
 import { getRuntime } from '../lib/runtime.js';
@@ -155,57 +158,115 @@ router.get('/:subject/chunks/:filename', async (req, res) => {
 });
 
 // ─── Upload + ingest ──────────────────────────────────────────────────────────
-// Progress is streamed as SSE, because a large PDF takes long enough that a
-// silent spinner is indistinguishable from a hang.
+/**
+ * Ingest jobs, by id.
+ *
+ * Ingesting a real document takes minutes — a 48-page PDF, or a scan read page
+ * by page by a vision model. This used to run inside the upload request itself
+ * and stream progress back over SSE, which tied the work to the socket: close
+ * the tab, restart the dev server, blink at a proxy, and the work died
+ * halfway with a half-written subject and no explanation.
+ *
+ * So the request now does the small part — receive the file, start the job,
+ * answer with its id — and the work continues here. The client polls. That is
+ * how /api/build has always worked; upload was the one long operation still
+ * holding its caller open.
+ *
+ * Kept in memory deliberately: a job is only interesting while it runs and for
+ * long enough afterwards to read the result. A restart still ends the work,
+ * because the process is the work — but the client finds out instead of
+ * waiting forever on a socket nobody is going to write to.
+ */
+const jobs = new Map();
+const JOB_TTL_MS = 10 * 60_000;
+
+function newJob(subject, filename) {
+  const id = crypto.randomUUID();
+  jobs.set(id, {
+    id, subject, filename,
+    stage: 'start', startedAt: Date.now(),
+    done: 0, total: 0, result: null, error: null, finishedAt: null,
+  });
+  return jobs.get(id);
+}
+
+/** Drop finished jobs once nobody could reasonably still be reading them. */
+function sweepJobs() {
+  const now = Date.now();
+  for (const [id, job] of jobs) {
+    if (job.finishedAt && now - job.finishedAt > JOB_TTL_MS) jobs.delete(id);
+  }
+}
+
 router.post('/:subject/upload', requireAdmin, upload.single('file'), async (req, res) => {
   const { subject } = req.params;
   if (!req.file) return res.status(400).json({ error: 'No file uploaded (field name must be "file")' });
 
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+  sweepJobs();
 
+  let profile, store, embedder, analysisClient;
   try {
     const rt = getRuntime();
-    const profile = await rt.getProfile(subject);
-    const store = rt.getStore(profile);
+    profile = await rt.getProfile(subject);
+    store = rt.getStore(profile);
     if (store.readOnly) {
       throw new Error(
         `Subject "${subject}" is read-only, so it cannot accept uploads. ` +
         `Create a SageStack-owned subject to ingest new documents.`,
       );
     }
-
     // Both enrichment stages are optional; report which are active up front so
     // the operator knows what they are getting before waiting for it.
-    const embedder = process.env.VOYAGE_API_KEY || profile.embed.driver === 'local'
+    embedder = process.env.VOYAGE_API_KEY || profile.embed.driver === 'local'
       ? rt.getEmbedder(profile)
       : null;
-    const analysisClient = process.env.ANTHROPIC_API_KEY
+    analysisClient = process.env.ANTHROPIC_API_KEY
       ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       : null;
-
-    send({ stage: 'start', filename: req.file.originalname, willEmbed: !!embedder, willAnalyze: !!analysisClient });
-
-    const result = await ingestDocument({
-      profile,
-      store,
-      embedder,
-      analysisClient,
-      filePath: req.file.path,
-      filename: req.file.originalname,
-      onProgress: send,
-    });
-
-    send({ stage: 'done', result });
   } catch (err) {
-    send({ stage: 'error', error: err.message });
-  } finally {
     await fs.unlink(req.file.path).catch(() => {});
-    res.end();
+    return res.status(400).json({ error: err.message });
   }
+
+  const job = newJob(subject, req.file.originalname);
+  res.json({
+    jobId: job.id,
+    filename: job.filename,
+    willEmbed: !!embedder,
+    willAnalyze: !!analysisClient,
+  });
+
+  // Past the response. Nothing below depends on the caller still being there.
+  (async () => {
+    try {
+      job.result = await ingestDocument({
+        profile, store, embedder, analysisClient,
+        filePath: req.file.path,
+        filename: req.file.originalname,
+        onProgress: (p) => Object.assign(job, p),
+      });
+      job.stage = 'done';
+    } catch (err) {
+      job.stage = 'error';
+      job.error = err.message;
+    } finally {
+      job.finishedAt = Date.now();
+      await fs.unlink(req.file.path).catch(() => {});
+    }
+  })();
+});
+
+/** Where an ingest job has got to. The client polls this. */
+router.get('/:subject/upload-progress/:jobId', (req, res) => {
+  const job = jobs.get(req.params.jobId);
+  if (!job) {
+    // Either it never existed, or the server restarted and took it with it.
+    // Both mean the same thing to a client that is waiting: stop waiting.
+    return res.status(404).json({
+      error: 'That ingest job is gone — the server restarted, or it finished long enough ago to be cleared.',
+    });
+  }
+  res.json(job);
 });
 
 // ─── Remove a document and its chunks ─────────────────────────────────────────

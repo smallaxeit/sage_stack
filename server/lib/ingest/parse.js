@@ -46,7 +46,7 @@ function guessPrintedPage(text) {
  * default joins every page into one blob. Overriding it is the supported way
  * to keep the page boundaries.
  */
-async function parsePdfPages(buffer) {
+async function parsePdfPages(buffer, onPage = () => {}) {
   const pages = [];
 
   await pdfParse(buffer, {
@@ -74,6 +74,9 @@ async function parsePdfPages(buffer) {
 
       const text = lines.join('\n').replace(/[ \t]+\n/g, '\n').trim();
       pages.push(text);
+      // Extraction on a long PDF runs for a while with nothing to show for it,
+      // which is indistinguishable from a hang. Report each page as it lands.
+      onPage(pages.length);
       return text;
     },
   });
@@ -92,7 +95,7 @@ async function parsePdfPages(buffer) {
  * pdfPage null, so downstream code has one shape to handle. Only PDFs carry
  * page numbers, so only PDFs produce page citations.
  */
-export async function parseDocument(filePath, { ext: explicitExt } = {}) {
+export async function parseDocument(filePath, { ext: explicitExt, onPage = () => {} } = {}) {
   // Prefer an explicitly supplied extension: an upload lives at a random temp
   // path with no extension, and only the original filename knows the type.
   const ext = String(explicitExt ?? path.extname(filePath)).toLowerCase();
@@ -100,7 +103,7 @@ export async function parseDocument(filePath, { ext: explicitExt } = {}) {
 
   switch (ext) {
     case '.pdf': {
-      const pages = await parsePdfPages(raw);
+      const pages = await parsePdfPages(raw, onPage);
       return { paged: true, pages };
     }
     case '.txt':
