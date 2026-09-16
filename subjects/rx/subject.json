@@ -32,7 +32,7 @@
     "rewriteFollowUps": true,
     "filterKey": "drugs",
     "overfetch": 4,
-    "boost": 0.12,
+    "boost": 0.15,
     "coverPerTerm": 3,
     "filterFields": [
       "generic",

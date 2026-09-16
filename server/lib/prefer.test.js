@@ -60,7 +60,7 @@ describe('preferRank', () => {
       chunk(['aspirin'], 0.62, 'unpreferred'),
       chunk(['metformin'], 0.55, 'preferred'),
     ];
-    const out = preferRank(results, { key: 'drugs', active, boost: 0.12, limit: 2 });
+    const out = preferRank(results, { key: 'drugs', active, boost: 0.15, limit: 2 });
     assert.equal(out[0].id, 'preferred');
     assert.equal(out[0].preferred, true);
     assert.equal(out[1].preferred, false);
@@ -73,7 +73,7 @@ describe('preferRank', () => {
       chunk(['aspirin'], 0.90, 'strong'),
       chunk(['metformin'], 0.40, 'weak-but-preferred'),
     ];
-    const out = preferRank(results, { key: 'drugs', active, boost: 0.12, limit: 2 });
+    const out = preferRank(results, { key: 'drugs', active, boost: 0.15, limit: 2 });
     assert.equal(out[0].id, 'strong');
   });
 
@@ -84,7 +84,7 @@ describe('preferRank', () => {
       chunk(['ibuprofen'], 0.70, 'not-taking'),
       chunk(['metformin'], 0.69, 'taking'),
     ];
-    const out = preferRank(results, { key: 'drugs', active, boost: 0.12, limit: 5 });
+    const out = preferRank(results, { key: 'drugs', active, boost: 0.15, limit: 5 });
     assert.equal(out.length, 2);
     assert.ok(out.some(r => r.id === 'not-taking'), 'unpreferred must survive');
   });
@@ -101,9 +101,34 @@ describe('preferRank', () => {
       chunk(['b'], 0.75, 'b'),
       chunk(['metformin'], 0.70, 'preferred'),
     ];
-    const out = preferRank(results, { key: 'drugs', active, boost: 0.12, limit: 2 });
+    const out = preferRank(results, { key: 'drugs', active, boost: 0.15, limit: 2 });
     assert.ok(out.some(r => r.id === 'preferred'),
       'the preferred passage was outside the limit before re-ranking and must survive it');
+  });
+
+  test('the thumb weighs the same whether scores are strong or weak', () => {
+    // This is why the boost is proportional rather than added on.
+    //
+    // It used to be absolute, tuned for cosine scores "around 0.5-0.7". A
+    // vague or misspelled question makes every score weak — measured on a real
+    // question, a typo took the top matches from 0.58 to 0.31 — and at 0.31 a
+    // flat +0.12 is a 39% lift rather than 20%. The reader's standing
+    // preferences took over the ranking at exactly the moment nothing in the
+    // documents was distinguishing itself, which is the worst time to lean on
+    // a prior.
+    const gap = 1.10;   // the unpreferred passage is 10% better in both worlds
+
+    const outcome = (strong) => {
+      const results = [
+        chunk(['aspirin'], strong * gap, 'unpreferred'),
+        chunk(['metformin'], strong, 'preferred'),
+      ];
+      return preferRank(results, { key: 'drugs', active, boost: 0.15, limit: 2 })[0].id;
+    };
+
+    assert.equal(outcome(0.58), 'preferred', 'confident query');
+    assert.equal(outcome(0.31), 'preferred', 'weak query — same relative gap, same result');
+    assert.equal(outcome(0.05), 'preferred', 'nearly no signal at all');
   });
 
   test('ties keep the order the store returned', () => {
