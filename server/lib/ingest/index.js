@@ -186,7 +186,10 @@ export async function ingestDocument({
 
   // ─── Parse ─────────────────────────────────────────────────────────────────
   onProgress({ stage: 'parse', filename: safeName });
-  const { paged, pages } = await parseDocument(filePath, { ext: path.extname(safeName) });
+  const { paged, pages } = await parseDocument(filePath, {
+    ext: path.extname(safeName),
+    onPage: (done) => onProgress({ stage: 'parse', filename: safeName, done }),
+  });
 
   // Detect a scan rather than storing an empty knowledge base and calling it
   // success. This is the failure ask_cooter hit: 651 pages, ~0 extractable

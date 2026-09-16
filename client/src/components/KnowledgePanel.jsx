@@ -100,7 +100,7 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
     const of = (done, total) => (total ? `${n(done)} of ${n(total)}` : n(done));
     switch (u.stage) {
       case 'start':         return 'Uploading';
-      case 'parse':         return 'Reading the file';
+      case 'parse':         return u.done ? `Reading page ${n(u.done)}` : 'Reading the file';
       case 'detected-scan': return `Scanned document — ${n(u.pages)} pages to read with vision`;
       case 'vision':        return `Reading page ${of(u.done, u.total)}`
                                  + (u.estimateUsd ? ` · about $${u.estimateUsd.toFixed(2)}` : '')
@@ -121,36 +121,36 @@ export default function KnowledgePanel({ subject, current, docs = [], onRefresh,
     body.append('file', file);
 
     try {
+      // The request only hands over the file and gets a job id. The work
+      // happens server-side and outlives this call, so a closed tab or a
+      // dropped connection no longer takes a half-finished ingest with it.
       const res = await apiFetch(`/api/documents/${subject}/upload`, { method: 'POST', body });
-      if (!res.ok && res.headers.get('content-type')?.includes('json')) {
-        throw new Error((await res.json()).error || `Upload failed (${res.status})`);
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const frames = buf.split('\n\n');
-        buf = frames.pop();
-        for (const frame of frames) {
-          if (!frame.startsWith('data: ')) continue;
-          const ev = JSON.parse(frame.slice(6));
-          if (ev.stage === 'error') { setUpload(u => ({ ...u, stage: 'error', error: ev.error })); return; }
-          if (ev.stage === 'done') { setUpload({ filename: ev.result.filename, stage: 'done', result: ev.result }); onRefresh?.(); return; }
-          setUpload(u => ({ ...u, ...ev, startedAt: u?.startedAt ?? Date.now() }));
-        }
-      }
+      const started = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(started.error || `Upload failed (${res.status})`);
 
-      // The stream ended without saying how it went. A server restart mid-upload
-      // does this, and the old code simply fell out of the loop — leaving the
-      // last stage on screen forever, looking like work still in progress.
-      setUpload(u => ({
-        ...(u || {}),
-        stage: 'error',
-        error: 'The connection closed before ingestion finished. Nothing was saved — try the upload again.',
-      }));
+      const startedAt = Date.now();
+      for (;;) {
+        await new Promise(r => setTimeout(r, 1000));
+
+        const pr = await fetch(
+          `/api/documents/${subject}/upload-progress/${started.jobId}`).catch(() => null);
+
+        if (!pr) continue;                       // a blip; the job is still running
+        if (pr.status === 404) {
+          const { error } = await pr.json().catch(() => ({}));
+          setUpload(u => ({ ...u, stage: 'error', error: error || 'The ingest job is gone.' }));
+          return;
+        }
+
+        const job = await pr.json();
+        if (job.stage === 'error') { setUpload(u => ({ ...u, stage: 'error', error: job.error })); return; }
+        if (job.stage === 'done') {
+          setUpload({ filename: job.result.filename, stage: 'done', result: job.result });
+          onRefresh?.();
+          return;
+        }
+        setUpload(u => ({ ...u, ...job, startedAt }));
+      }
     } catch (err) {
       setUpload(u => ({ ...(u || {}), stage: 'error', error: err.message }));
     }
