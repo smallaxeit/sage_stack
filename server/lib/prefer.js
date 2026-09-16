@@ -162,6 +162,36 @@ export function coverActive(selected, pool, { key, active, limit = 1 } = {}) {
 }
 
 /**
+ * Terms the question itself names.
+ *
+ * The reader's list says what they care about in general. It cannot say what
+ * this particular question is about — and when those differ, preference works
+ * against the reader: a question about a drug they are NOT taking gets no
+ * boost and no guaranteed passage, while four drugs they did not ask about get
+ * both. Asked to summarize one drug's interactions, retrieval returned
+ * eighteen passages and not one of them was that drug.
+ *
+ * So whatever the question names is treated as current for that question. The
+ * candidates come from the pool already fetched, so this costs no extra query.
+ *
+ * Matching is word-boundary, not substring: "cad" must not match inside
+ * "amlodipine", and a two-letter abbreviation must not match half the corpus.
+ */
+export function mentionedTerms(query, chunks, key, { minLength = 4 } = {}) {
+  const haystack = ` ${String(query).toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+  const found = new Set();
+
+  for (const chunk of chunks) {
+    for (const term of termsFrom(chunk, key)) {
+      if (term.length < minLength || found.has(term)) continue;
+      const normalized = term.replace(/[^a-z0-9]+/g, ' ').trim();
+      if (normalized && haystack.includes(` ${normalized} `)) found.add(term);
+    }
+  }
+  return [...found];
+}
+
+/**
  * Every distinct term present across a set of chunks, for offering choices.
  *
  * Only what the documents actually contain — selecting something with nothing

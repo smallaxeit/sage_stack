@@ -7,7 +7,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { termsFrom, matches, preferRank, coverActive, availableTerms } from './prefer.js';
+import { termsFrom, matches, preferRank, coverActive, mentionedTerms, availableTerms } from './prefer.js';
 
 const chunk = (drugs, score = 0.5, id = 'c') => ({ id, score, text: 't', extras: { drugs } });
 
@@ -199,6 +199,47 @@ describe('coverActive', () => {
     const ranked = [chunk(['aspirin'], 0.5, 'a')];
     assert.deepEqual(coverActive(ranked, ranked, { key: 'drugs', active: [] }).results, ranked);
     assert.deepEqual(coverActive(ranked, ranked, {}).results, ranked);
+  });
+});
+
+describe('mentionedTerms', () => {
+  const pool = [
+    chunk([{ generic: 'evolocumab', brand: 'Repatha' }], 0.7, 'r1'),
+    chunk([{ generic: 'rosuvastatin', brand: 'Crestor' }], 0.6, 'x1'),
+    chunk([{ generic: 'losartan potassium' }], 0.5, 'l1'),
+  ];
+
+  test('finds what the question names, by brand or generic', () => {
+    // The reader's standing list cannot say what THIS question is about. When
+    // they differ, preference worked against them: a question about a drug not
+    // on the list got no boost and no reserved slot, while four drugs they had
+    // not asked about took both.
+    assert.deepEqual(mentionedTerms('give a one pager for repatha', pool, 'drugs'), ['repatha']);
+    assert.deepEqual(mentionedTerms('what does evolocumab do', pool, 'drugs'), ['evolocumab']);
+  });
+
+  test('matches a multi-word term', () => {
+    assert.ok(mentionedTerms('is losartan potassium safe', pool, 'drugs').includes('losartan potassium'));
+  });
+
+  test('ignores punctuation and case around the term', () => {
+    assert.deepEqual(mentionedTerms('Repatha: dosing?', pool, 'drugs'), ['repatha']);
+  });
+
+  test('matches whole words only', () => {
+    // Substring matching would find "crest" inside "Crestor" and, worse, short
+    // terms inside unrelated words — quietly granting slots to the wrong drug.
+    assert.deepEqual(mentionedTerms('the crest of the hill', pool, 'drugs'), []);
+  });
+
+  test('a question naming nothing returns nothing', () => {
+    assert.deepEqual(mentionedTerms('what are the side effects', pool, 'drugs'), []);
+    assert.deepEqual(mentionedTerms('', pool, 'drugs'), []);
+  });
+
+  test('short terms are skipped, since they collide with ordinary words', () => {
+    const shorty = [chunk([{ generic: 'ace' }], 0.5, 's1')];
+    assert.deepEqual(mentionedTerms('what is the ace inhibitor for', shorty, 'drugs'), []);
   });
 });
 

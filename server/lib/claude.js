@@ -19,7 +19,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { buildSystemPrompt, friendlySourceName } from './subjects.js';
 import { assertEmbedderMatchesSubject } from './embed/index.js';
 import { resolveSearchQuery } from './rewrite.js';
-import { preferRank, coverActive, matches } from './prefer.js';
+import { preferRank, coverActive, matches, mentionedTerms } from './prefer.js';
 import { priceMessage, totalCost, formatUSD } from './pricing.js';
 
 let _client = null;
@@ -66,6 +66,21 @@ function pageLabel(chunk) {
  * hitting this is a data problem worth noticing, not something to paper over.
  */
 const MAX_CHUNK_CHARS = 12000;
+
+/**
+ * Asking about a document, rather than asking it something.
+ *
+ * "Give me a one pager for X", "summarize the whole label", "read the full
+ * interactions section" — these are not answered by the passages nearest the
+ * question. They are answered by the document. Ranked retrieval hands over a
+ * sample, and a summary built from a sample is a summary with holes in it that
+ * reads exactly like a summary without them.
+ *
+ * Deliberately narrow. It has to name the wanted scope out loud, because the
+ * cost of being wrong is sending a whole document for a question that wanted
+ * one line.
+ */
+const WHOLE_DOCUMENT = /\b(summar(y|ise|ize|izing|ising)|one[\s-]?pager|overview|rundown|full (text|label|section|list)|entire|the whole|everything (about|in|on)|complete (list|picture))\b/i;
 
 function chunkText(chunk) {
   const t = chunk.text ?? '';
@@ -132,7 +147,7 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
   if (!profile) throw new Error('createTeacher requires a subject profile');
 
   let guarded = false;
-  const defaultRetrieve = async (query, { active = [] } = {}) => {
+  const defaultRetrieve = async (query, { active = [], recent = '' } = {}) => {
     if (!store || !embedder) {
       throw new Error('createTeacher requires either `retrieve`, or both `store` and `embedder`');
     }
@@ -199,12 +214,58 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     // can still be pulled in. Re-ranking a list that was already truncated
     // could not recover it.
     const wide = await store.searchByVector(profile.slug, vec, topK * overfetch);
-    const ranked = preferRank(wide, { key: filterKey, active, boost, limit: topK });
+
+    // What the conversation is about counts as current for this question.
+    //
+    // Two failures made this necessary. Asking about something NOT on the
+    // reader's list is penalized twice — no boost, and no reserved slot —
+    // while the listed items take both. And a follow-up often does not name
+    // its subject at all: "read the contraindications section and summarize"
+    // is plainly about the drug just discussed, but the words are not there.
+    // Together those sent eighteen passages about four drugs the reader had
+    // not asked about, and none about the one they had.
+    //
+    // Recent turns are searched alongside the question, so the subject
+    // survives a follow-up that drops it. No model call — the candidate terms
+    // come from the pool already fetched.
+    const named = mentionedTerms(`${recent} ${query}`, wide, filterKey);
+
+    // A whole-document request gets the whole document, in document order, so
+    // a summary is of the label rather than of a sample of it. Only when the
+    // subject is unambiguous and the document actually fits.
+    if (WHOLE_DOCUMENT.test(query) && named.length) {
+      const wanted = new Set(
+        wide.filter(r => matches(r, filterKey, named)).map(r => r.source));
+
+      if (wanted.size > 0) {
+        const everything = await store.getChunks(profile.slug, { limit: null });
+        const doc = everything
+          .filter(c => wanted.has(c.source))
+          .sort((a, b) => a.source.localeCompare(b.source) || a.chunkIndex - b.chunkIndex);
+
+        const chars = doc.reduce((n, c) => n + (c.text?.length ?? 0), 0);
+        const budget = profile.retrieval.maxContextChars ?? 250_000;
+
+        if (doc.length && chars <= budget) {
+          log.log?.(
+            `[${profile.slug}] whole-document request: ${doc.length} chunks from ` +
+            `${[...wanted].join(', ')} (${chars.toLocaleString()} chars)`);
+          return doc;
+        }
+        log.warn?.(
+          `[${profile.slug}] whole-document request for ${[...wanted].join(', ')} ` +
+          `is ${chars.toLocaleString()} chars, over the ${budget} budget — ranking instead.`);
+      }
+    }
+    const effective = named.length ? [...new Set([...active, ...named])] : active;
+    if (named.length) log.log?.(`[${profile.slug}] question names: ${named.join(', ')}`);
+
+    const ranked = preferRank(wide, { key: filterKey, active: effective, boost, limit: topK });
 
     // Then guarantee each listed item a passage, so an item with many pages
     // cannot take every slot and leave another looking undocumented.
     const { results, uncovered } = coverActive(ranked, wide, {
-      key: filterKey, active, limit: coverPerTerm,
+      key: filterKey, active: effective, limit: coverPerTerm,
     });
 
     // Anything absent from the whole pool gets its own search. The pool is
@@ -269,7 +330,11 @@ export function createTeacher({ profile, store, embedder, retrieve, client, log 
     // again there — it is a store round-trip, and both callers want the same
     // answer for the same question.
     const active = profile.retrieval.filterKey ? await activeTerms() : [];
-    const results = await doRetrieve(query, { active });
+    // The last couple of turns, as plain text. Enough for a follow-up to keep
+    // its subject; short enough that a drug named ten questions ago does not
+    // keep claiming slots.
+    const recent = messages.slice(-4).map(m => String(m.content ?? '')).join(' \n ');
+    const results = await doRetrieve(query, { active, recent });
 
     log.log?.(
       `[${profile.slug}] query: "${String(query).slice(0, 80)}"` +
