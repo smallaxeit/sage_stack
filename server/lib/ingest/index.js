@@ -54,9 +54,15 @@ export function pagesDir(slug) {
   return path.join(REPO_ROOT, 'data/pages', assertValidSlug(slug));
 }
 
-/** Reject anything that would escape the subject's document directory. */
+/**
+ * Reject anything that would escape the subject's document directory.
+ *
+ * win32.basename splits on both separators on every platform. The POSIX one
+ * treats a backslash as an ordinary character, so on Linux a Windows client's
+ * "C:\Users\me\label.pdf" would be stored under that whole string as its name.
+ */
 export function safeFilename(filename) {
-  const base = path.basename(String(filename || '').trim());
+  const base = path.win32.basename(String(filename || '').trim());
   if (!base || base === '.' || base === '..') throw new Error(`Invalid filename: ${filename}`);
   return base;
 }
