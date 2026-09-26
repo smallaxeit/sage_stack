@@ -1,5 +1,7 @@
 # SageStack
 
+[![CI](https://github.com/smallaxeit/sage_stack/actions/workflows/ci.yml/badge.svg)](https://github.com/smallaxeit/sage_stack/actions/workflows/ci.yml)
+
 > *A knowledge base you can question, and check.*
 
 SageStack turns a pile of documents into something you can ask questions of —
