@@ -96,11 +96,14 @@ Store: postgres
 
 ## Loading documents
 
-**One at a time:** Knowledge screen → drop a PDF on the upload area. Progress
-streams per stage.
+**One at a time:** Knowledge screen → drop a file on the upload area. The
+upload starts a background job and the page polls it, so closing the tab does
+not stop the ingest (restarting the server does).
 
 **In bulk:** put files in `subjects/<slug>/source/`, then `POST /api/build`
-(or the Build action). Poll `/api/build-progress`.
+(or the Build action). Poll `/api/build-progress`. With `source/` empty, Build
+re-ingests the subject's uploaded documents from `data/documents/<slug>/`
+instead — the way to retry a failed document without uploading it again.
 
 Supported: PDF, DOCX, TXT, MD, JSON, CSV.
 

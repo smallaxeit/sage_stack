@@ -14,7 +14,8 @@ Approved for a future session. Nothing here is in progress.
   `splitOversized` fixed it, and most of Rx has been re-ingested since: those
   documents now sit comfortably under the cap. One was missed and still carries
   its original chunks, a quarter of them over the limit and the largest at
-  twice it. Re-uploading that one document is well under a dollar. Query
+  twice it. Re-ingesting it (Build now re-reads `data/documents/rx/`, so no
+  re-upload is needed) is well under a dollar. Query
   `rx.chunks` grouped by source with `max(length(text))` to identify it.
 
   theology and softail have since been measured. softail is clean (0 over cap).
@@ -29,7 +30,8 @@ Approved for a future session. Nothing here is in progress.
 - **Failed chunk analysis cannot be retried.** One Rx chunk failed analysis
   (the string "Revised: 4/2026" — a page footer, so no
   real loss). There is no backfill that re-runs analysis for chunks missing a
-  summary, so the only remedy today is re-ingesting the whole document.
+  summary, so the only remedy today is re-ingesting the whole document through
+  Build — which then runs into the orphan problem above.
 
 ---
 
@@ -92,19 +94,17 @@ Approved for a future session. Nothing here is in progress.
   Fixed, but nothing stops it regressing.
 
 - **Vision ingestion has never been run end to end.** Extraction is verified on
-  individual pages and the resume logic in isolation, but no full
-  multi-hundred-page document has been ingested through it. The retry and
-  fallback paths are unit-tested against doubles, not real rate limits. (The
-  softail scans came from ask_cooter, which did its own run.)
+  individual pages and the resume logic in isolation, and `auto` routing a
+  scanned PDF to vision is covered — but no full multi-hundred-page document has
+  been ingested through it, and no test drives a real scan through rendering
+  and extraction: there is no scan fixture in the repo, and building one means
+  embedding an image in a hand-written PDF. The retry and fallback paths are
+  unit-tested against doubles, not real rate limits. (The softail scans came
+  from ask_cooter, which did its own run.) The first real scan upload is the
+  test.
 
-- **Vision ingestion end to end is still the untested path.** `auto` now routes
-  a scanned PDF to vision instead of refusing it, and the routing decision is
-  covered — but no test drives a real scan through rendering and extraction,
-  because there is no scan fixture in the repo and building one means embedding
-  an image in a hand-written PDF. The first real scan upload is the test.
-
-- **The Docker image has never been built.** Docker is not installed on the dev
-  machine, so two boot-stopping omissions were caught by reading the Dockerfile
+- **The Docker image has never been built.** CI runs the tests and builds the
+  client, but not the image, and Docker is not installed on the dev machine, so two boot-stopping omissions were caught by reading the Dockerfile
   rather than by running it: `subjects/` and later `config/`, without which
   `lib/models.js` throws at import and the container never starts. A third will
   not be caught the same way. Build it once before relying on it.
@@ -173,17 +173,6 @@ Approved for a future session. Nothing here is in progress.
   at all — it arrives through Express's own query parsing — so the path is not
   reachable from this app. Clearing it means the Express 4 to 5 migration,
   which is worth doing on its own terms rather than for this.
-
-- **The Build action reads a directory nothing uses.** It ingests
-  `subjects/<slug>/source/`, which is empty for every subject: rx was uploaded
-  through the Knowledge screen so its files are in `data/documents/rx/`, and
-  theology and softail were imported straight into the store with no local
-  files at all. So "re-running updates existing documents in place" is not true
-  — it would not touch the documents a subject actually has, which is why
-  re-doing a single document meant re-uploading it by hand. Build should fall
-  back to `data/documents/<slug>/` when `source/` is empty, name the directory
-  it is about to read, and stop reporting a missing `source/` as an error for
-  a subject that has documents by another route.
 
 - **`READING_LIST.md` was ingested as a source** into theology (2 chunks). It
   is documentation, not content. A bulk build should have an ignore list.

@@ -336,7 +336,7 @@ page/chunk mapping exact, which is what citations need.
 
 ### Phase 5 — Feed it PDFs ✅ done
 
-[routes/documents.js](server/routes/documents.js) — upload with SSE progress,
+[routes/documents.js](server/routes/documents.js) — upload as a polled background job,
 document listing, chunk browsing, file and page-image serving.
 [ingest/](server/lib/ingest/) — page-aware parsing, so every chunk knows its
 page and citations can link to it.

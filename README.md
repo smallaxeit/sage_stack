@@ -353,8 +353,9 @@ core — summary, concepts, themes, difficulty — is shared by every subject;
 everything else is driven by config into a freeform `extras` field. Theology
 asks for scripture references, a service manual asks for torque specs.
 
-Then either drop files in `source/` and hit **Build**, or upload through the
-Knowledge screen.
+Then either upload through the Knowledge screen, or drop files in `source/`
+and hit **Build**. Build reads `source/` when anything is staged there and
+otherwise re-ingests what the subject already holds in `data/documents/<slug>/`.
 
 Only `voice` is required. Everything else falls back to a default, and the
 model defaults come from `config/models.json`.
